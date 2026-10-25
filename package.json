@@ -1,0 +1,30 @@
+{
+  "name": "nextjs-wedding",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -H 0.0.0.0 -p 3001",
+    "build": "next build",
+    "start": "next start -p 3001",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "browser-image-compression": "^2.0.2",
+    "cloudinary": "^2.9.0",
+    "framer-motion": "^12.38.0",
+    "jszip": "^3.10.1",
+    "lucide-react": "^1.7.0",
+    "mongodb": "^7.1.1",
+    "next": "^16.2.3",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "react-easy-crop": "^5.5.7",
+    "sharp": "^0.34.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.2",
+    "tailwindcss": "^4"
+  }
+}

@@ -1,0 +1,134 @@
+@import "tailwindcss";
+
+@theme {
+  --font-script: var(--font-script), cursive;
+  --font-serif:  var(--font-serif), 'Georgia', serif;
+  --font-sans:   var(--font-sans), system-ui, sans-serif;
+
+  --animate-ribbon-breath: ribbon-breath 3s ease-in-out infinite;
+
+  @keyframes ribbon-breath {
+    0%, 100% { transform: scale(1); opacity: 0.8; }
+    50%       { transform: scale(1.05); opacity: 1; }
+  }
+}
+
+
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scroll behaviour */
+html {
+  scroll-behavior: smooth;
+}
+
+/* ── Custom scrollbar ── */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: #FBF8F4; }
+::-webkit-scrollbar-thumb { background: #C9956A; border-radius: 99px; }
+
+/* ── Reveal animation base ── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(28px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-up {
+  animation: fadeUp 0.85s ease both;
+}
+
+/* ── Countdown flip ── */
+@keyframes numFlip {
+  0%   { transform: scaleY(1); }
+  50%  { transform: scaleY(0.5); }
+  100% { transform: scaleY(1); }
+}
+.flip {
+  animation: numFlip 0.35s ease;
+}
+
+/* ── Bounce scroll cue ── */
+@keyframes scrollBounce {
+  0%, 100% { transform: translateX(-50%) translateY(0);   opacity: 0.65; }
+  50%       { transform: translateX(-50%) translateY(8px); opacity: 1; }
+}
+.animate-scroll-bounce {
+  animation: scrollBounce 2s ease-in-out infinite;
+}
+
+/* ── Liquid Glass Animations ── */
+@keyframes shimmer {
+  0% { transform: translateX(-100%) translateY(-100%) rotate(45deg); }
+  100% { transform: translateX(200%) translateY(200%) rotate(45deg); }
+}
+.animate-shimmer {
+  animation: shimmer 4s infinite linear;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0) rotate(0); }
+  33% { transform: translateY(-15px) rotate(2deg); }
+  66% { transform: translateY(10px) rotate(-1deg); }
+}
+.animate-float {
+  animation: float 12s infinite ease-in-out;
+}
+
+@keyframes pulse-slow {
+  0%, 100% { opacity: 0.12; transform: scale(1); }
+  50% { opacity: 0.18; transform: scale(1.08); }
+}
+.animate-pulse-slow {
+  animation: pulse-slow 10s infinite ease-in-out;
+}
+
+/* ── Optimized GPU-Accelerated Petal Animations ── */
+@keyframes pureFall {
+  0% { transform: translateY(-10vh) rotate(0deg); opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { transform: translateY(110vh) rotate(720deg); opacity: 0; }
+}
+
+@keyframes pureSway {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(40px); }
+}
+
+.css-petal-fall {
+  animation-name: pureFall;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  animation-fill-mode: both;
+  will-change: transform, opacity;
+  transform: translateZ(0); /* Force GPU acceleration */
+  backface-visibility: hidden;
+}
+
+.css-petal-sway {
+  animation-name: pureSway;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  will-change: transform;
+  transform: translateZ(0); /* Force GPU acceleration */
+}
+
+/* ── Hide native iOS video play button (Low Power Mode) ── */
+video::-webkit-media-controls-start-playback-button {
+  display: none !important;
+  -webkit-appearance: none;
+}
+
+/* Additional iOS video controls suppression for cleaner presentation */
+video::-webkit-media-controls {
+  opacity: 0;
+  pointer-events: none;
+}
+
+video::-webkit-media-controls-enclosure {
+  display: none !important;
+}

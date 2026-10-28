@@ -1,27 +1,24 @@
 'use client';
 
 import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown } from 'lucide-react';
 
-export default function CinematicScrollHero({ config }) {
+export default function CinematicScrollHero({ config, hasOpened }) {
   const containerRef = useRef(null);
   const canvasRef = useRef(null);
   const imagesRef = useRef([]);
   const currentFrameRef = useRef(-1);
+  const activeFrameRef = useRef(0);
 
   const [frameList, setFrameList] = useState([]);
   const [scrollProgress, setScrollProgress] = useState(0);
   const [activeFrameIndex, setActiveFrameIndex] = useState(0);
 
-  // Extract couple & wedding data
+  // Extract couple info for subtle elegant top badge
   const couple = config?.couple || {};
   const bride = couple.bride?.firstName || 'Bride';
   const groom = couple.groom?.firstName || 'Groom';
   const displayNames = couple.displayNames || `${groom} & ${bride}`;
-  const tagline = couple.tagline || 'Two hearts, one destination.';
-  const displayDate = config?.wedding?.displayDate || 'December 19, 2026';
-  const venueCity = config?.events?.ceremony?.venueName || 'COLOMBO';
 
   // 1. Fetch available frames dynamically from API or config
   useEffect(() => {
@@ -47,7 +44,7 @@ export default function CinematicScrollHero({ config }) {
         console.warn('Frame discovery fallback:', err);
       }
 
-      // Fallback if discovery fails
+      // Fallback: 11 default user envelope frames
       if (!isCancelled) {
         setFrameList(Array.from({ length: 11 }, (_, i) => `/frames/frame_${String(i + 1).padStart(4, '0')}.webp`));
       }
@@ -68,7 +65,16 @@ export default function CinematicScrollHero({ config }) {
     if (!ctx) return;
 
     const img = imagesRef.current[frameIdx];
-    if (!img || !img.complete || img.naturalWidth === 0) return;
+    if (!img || !img.complete || img.naturalWidth === 0) {
+      if (img && !img.complete) {
+        img.onload = () => {
+          if (activeFrameRef.current === frameIdx) {
+            drawFrame(frameIdx);
+          }
+        };
+      }
+      return;
+    }
 
     const width = canvas.width;
     const height = canvas.height;
@@ -76,21 +82,30 @@ export default function CinematicScrollHero({ config }) {
 
     const imgWidth = img.naturalWidth;
     const imgHeight = img.naturalHeight;
+    const canvasRatio = width / height;
 
-    // object-fit: cover scaling
-    const hRatio = width / imgWidth;
-    const vRatio = height / imgHeight;
-    const ratio = Math.max(hRatio, vRatio);
+    let drawW, drawH, drawX, drawY;
 
-    const centerShiftX = (width - imgWidth * ratio) / 2;
-    const centerShiftY = (height - imgHeight * ratio) / 2;
+    // Desktop widescreen: contain mode to keep full vertical envelope visible
+    if (canvasRatio > 1.1) {
+      const scale = height / imgHeight;
+      drawW = imgWidth * scale;
+      drawH = height;
+      drawX = (width - drawW) / 2;
+      drawY = 0;
+    } else {
+      // Mobile & vertical displays: cover mode for full edge-to-edge immersion
+      const hRatio = width / imgWidth;
+      const vRatio = height / imgHeight;
+      const ratio = Math.max(hRatio, vRatio);
+      drawW = imgWidth * ratio;
+      drawH = imgHeight * ratio;
+      drawX = (width - drawW) / 2;
+      drawY = (height - drawH) / 2;
+    }
 
     ctx.clearRect(0, 0, width, height);
-    ctx.drawImage(
-      img,
-      0, 0, imgWidth, imgHeight,
-      centerShiftX, centerShiftY, imgWidth * ratio, imgHeight * ratio
-    );
+    ctx.drawImage(img, 0, 0, imgWidth, imgHeight, drawX, drawY, drawW, drawH);
 
     currentFrameRef.current = frameIdx;
   }, []);
@@ -108,9 +123,9 @@ export default function CinematicScrollHero({ config }) {
 
       img.onload = () => {
         if (isCancelled) return;
-        // Draw the very first frame immediately as soon as it arrives!
-        if (idx === 0 && currentFrameRef.current === -1) {
-          drawFrame(0);
+        // If this image is the active frame (or initial frame 0), draw it immediately!
+        if (idx === activeFrameRef.current || (activeFrameRef.current === 0 && idx === 0)) {
+          drawFrame(idx);
         }
       };
 
@@ -118,6 +133,11 @@ export default function CinematicScrollHero({ config }) {
     });
 
     imagesRef.current = loadedImages;
+
+    // If frame 0 is already cached in browser memory, draw immediately
+    if (loadedImages[0] && loadedImages[0].complete && loadedImages[0].naturalWidth > 0) {
+      drawFrame(0);
+    }
 
     return () => {
       isCancelled = true;
@@ -133,14 +153,16 @@ export default function CinematicScrollHero({ config }) {
     const width = window.innerWidth;
     const height = window.innerHeight;
 
+    if (width === 0 || height === 0) return;
+
     canvas.width = Math.round(width * dpr);
     canvas.height = Math.round(height * dpr);
 
     canvas.style.width = `${width}px`;
     canvas.style.height = `${height}px`;
 
-    // Immediately repaint current frame
-    const activeIdx = currentFrameRef.current >= 0 ? currentFrameRef.current : 0;
+    // Immediately repaint active frame
+    const activeIdx = activeFrameRef.current >= 0 ? activeFrameRef.current : 0;
     drawFrame(activeIdx);
   }, [drawFrame]);
 
@@ -154,7 +176,18 @@ export default function CinematicScrollHero({ config }) {
     };
   }, [resizeCanvas]);
 
-  // 5. Scroll-scrubbing engine
+  // 5. When invitation opens, ensure canvas is measured and initial frame is painted
+  useEffect(() => {
+    if (hasOpened) {
+      const timer = setTimeout(() => {
+        resizeCanvas();
+        drawFrame(0);
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [hasOpened, resizeCanvas, drawFrame]);
+
+  // 6. Scroll-scrubbing engine
   useEffect(() => {
     if (totalFrames === 0) return;
 
@@ -184,11 +217,9 @@ export default function CinematicScrollHero({ config }) {
               Math.max(0, Math.floor(progress * totalFrames))
             );
 
+            activeFrameRef.current = targetFrame;
             setActiveFrameIndex(targetFrame);
-
-            if (targetFrame !== currentFrameRef.current) {
-              drawFrame(targetFrame);
-            }
+            drawFrame(targetFrame);
           }
 
           ticking = false;
@@ -204,7 +235,7 @@ export default function CinematicScrollHero({ config }) {
     return () => window.removeEventListener('scroll', handleScroll);
   }, [totalFrames, drawFrame]);
 
-  // 6. Natural scroll track height (scales with number of frames)
+  // 7. Natural scroll track height (scales with number of frames)
   const scrollHeight = useMemo(() => {
     if (totalFrames <= 0) return '100vh';
     if (totalFrames <= 20) return `${Math.max(220, totalFrames * 22)}vh`;
@@ -212,20 +243,7 @@ export default function CinematicScrollHero({ config }) {
     return `${Math.min(650, totalFrames * 2.5)}vh`;
   }, [totalFrames]);
 
-  // Phase opacity calculations
-  const getPhaseOpacity = (start, end, p = scrollProgress) => {
-    if (p < start || p > end) return 0;
-    const mid = (start + end) / 2;
-    const halfSpan = (end - start) / 2;
-    const dist = Math.abs(p - mid);
-    return Math.max(0, Math.min(1, 1 - dist / halfSpan));
-  };
-
-  const phase1Opacity = getPhaseOpacity(0.02, 0.24);
-  const phase2Opacity = getPhaseOpacity(0.26, 0.48);
-  const phase3Opacity = getPhaseOpacity(0.50, 0.72);
-  const phase4Opacity = getPhaseOpacity(0.74, 0.92);
-  const tailFadeOpacity = scrollProgress > 0.88 ? (scrollProgress - 0.88) / 0.12 : 0;
+  const currentFrameUrl = frameList[activeFrameIndex] || frameList[0] || '';
 
   return (
     <section
@@ -235,101 +253,55 @@ export default function CinematicScrollHero({ config }) {
       style={{ height: scrollHeight }}
     >
       {/* Sticky 100dvh Fullscreen Viewport Stage */}
-      <div className="sticky top-0 w-full h-screen h-[100dvh] overflow-hidden bg-[#050C1E]">
+      <div className="sticky top-0 w-full h-screen h-[100dvh] overflow-hidden bg-[#0d0407] flex items-center justify-center">
         
-        {/* Scrubbed High-Performance Canvas */}
-        <canvas
-          ref={canvasRef}
-          className="absolute inset-0 w-full h-full block bg-[#050C1E]"
-        />
-
-        {/* Fallback image behind canvas for instant visual feedback */}
-        {frameList[0] && (
+        {/* 1. Ambient Blurred Backdrop for widescreen displays */}
+        {currentFrameUrl && (
           <img
-            src={frameList[activeFrameIndex] || frameList[0]}
-            alt="Cinematic frame"
-            className="absolute inset-0 w-full h-full object-cover pointer-events-none -z-10"
+            src={currentFrameUrl}
+            alt=""
+            aria-hidden="true"
+            className="absolute inset-0 w-full h-full object-cover blur-3xl opacity-40 scale-110 pointer-events-none z-0"
           />
         )}
 
-        {/* Cinematic Vignette */}
-        <div className="absolute inset-0 pointer-events-none z-[5] bg-gradient-to-b from-[#050C1E]/60 via-transparent to-[#050C1E]/75" />
+        {/* 2. Hardware-accelerated visible image layer (GUARANTEES 100% VISIBILITY AT ALL TIMES) */}
+        {currentFrameUrl && (
+          <img
+            src={currentFrameUrl}
+            alt="Wedding envelope frame"
+            className="absolute inset-0 w-full h-full object-contain pointer-events-none z-[1]"
+          />
+        )}
 
-        {/* Tail Transition: Fades into next section */}
-        <div
-          className="absolute inset-0 pointer-events-none z-[6] bg-gradient-to-b from-transparent via-[#050C1E]/70 to-[#050C1E] transition-opacity duration-300"
-          style={{ opacity: tailFadeOpacity }}
+        {/* 3. High-performance canvas scrub layer for 60fps frame painting */}
+        <canvas
+          ref={canvasRef}
+          className="absolute inset-0 w-full h-full block bg-transparent pointer-events-none z-[2]"
         />
 
-        {/* ========================================================
-            SYNCHRONIZED FLOATING FRAMER MOTION OVERLAYS
-            ======================================================== */}
-        <div className="absolute inset-0 z-10 pointer-events-none flex flex-col items-center justify-center p-6 text-center">
-          
-          {/* Phase 1: Formal Invitation Opening */}
-          <div
-            className="absolute transition-opacity duration-500 max-w-lg"
-            style={{ opacity: phase1Opacity }}
-          >
-            <p className="font-sans text-[10px] sm:text-xs font-bold tracking-[0.3em] uppercase text-[#A9BEDD] mb-2">
-              Together with their families
-            </p>
-            <h3 className="font-serif text-3xl sm:text-5xl font-bold text-[#F2EFE7] italic">
-              You Are Cordially Invited
-            </h3>
-          </div>
-
-          {/* Phase 2: Romantic Tagline */}
-          <div
-            className="absolute transition-opacity duration-500 max-w-md"
-            style={{ opacity: phase2Opacity }}
-          >
-            <p className="font-serif italic text-2xl sm:text-4xl text-[#F2EFE7] leading-relaxed">
-              "{tagline}"
-            </p>
-          </div>
-
-          {/* Phase 3: Destination Highlight */}
-          <div
-            className="absolute transition-opacity duration-500 max-w-md"
-            style={{ opacity: phase3Opacity }}
-          >
-            <p className="font-sans text-[10px] sm:text-xs font-bold tracking-[0.3em] uppercase text-[#D9A85C] mb-2">
-              Destination
-            </p>
-            <h2 className="font-serif text-3xl sm:text-5xl font-bold tracking-widest text-[#F2EFE7] uppercase">
-              {venueCity}
-            </h2>
-          </div>
-
-          {/* Phase 4: Couple Names Grand Reveal */}
-          <div
-            className="absolute transition-opacity duration-500 max-w-xl"
-            style={{ opacity: phase4Opacity }}
-          >
-            <p className="font-sans text-[10px] sm:text-xs font-bold tracking-[0.3em] uppercase text-[#D9A85C] mb-3">
-              Celebrating The Union Of
-            </p>
-            <h1 className="font-serif text-4xl sm:text-6xl md:text-7xl font-bold text-[#F2EFE7] leading-none mb-4">
+        {/* 4. Elegant Minimal Top Pill Badge (Does not obstruct wax seal) */}
+        <div
+          className="absolute top-6 left-1/2 -translate-x-1/2 pointer-events-none z-10 transition-opacity duration-500 select-none"
+          style={{ opacity: scrollProgress < 0.92 ? 1 : 0 }}
+        >
+          <div className="px-5 py-2 rounded-full bg-black/45 backdrop-blur-md border border-[#D9A85C]/35 text-center shadow-lg">
+            <p className="font-sans text-[10px] sm:text-xs font-semibold tracking-[0.25em] uppercase text-[#F2EFE7]">
               {displayNames}
-            </h1>
-            <p className="font-serif italic text-lg sm:text-xl text-[#FBE398]">
-              {displayDate}
             </p>
           </div>
+        </div>
 
-          {/* Scroll Down Cue */}
-          <div
-            className="absolute bottom-6 sm:bottom-10 flex flex-col items-center text-[#A9BEDD] transition-opacity duration-300"
-            style={{ opacity: scrollProgress < 0.85 ? 1 - scrollProgress * 1.1 : 0 }}
-          >
-            <p className="font-sans text-[9px] sm:text-[10px] font-semibold tracking-[0.3em] uppercase mb-1">
-              Scroll down
-            </p>
-            <div className="w-[1px] h-8 bg-gradient-to-b from-[#A9BEDD] to-transparent animate-pulse" />
-            <ChevronDown size={14} className="animate-bounce mt-1 text-[#D9A85C]" />
-          </div>
-
+        {/* 5. Sleek Scroll-Down Indicator Cue */}
+        <div
+          className="absolute bottom-6 sm:bottom-8 flex flex-col items-center text-white/90 pointer-events-none z-10 transition-opacity duration-300 select-none"
+          style={{ opacity: scrollProgress < 0.85 ? Math.max(0, 1 - scrollProgress * 1.3) : 0 }}
+        >
+          <span className="font-sans text-[9px] sm:text-[10px] font-bold tracking-[0.3em] uppercase mb-1 drop-shadow-md text-[#FBE398]">
+            Scroll down to open
+          </span>
+          <div className="w-[1px] h-7 bg-gradient-to-b from-[#FBE398] to-transparent animate-pulse" />
+          <ChevronDown size={16} className="animate-bounce mt-1 text-[#FBE398] drop-shadow" />
         </div>
 
       </div>

@@ -153,7 +153,7 @@ function FramedCountdown({ targetDateISO }) {
 // ==========================================
 // 4. MAIN FRAMED INVITATION COMPONENT
 // ==========================================
-export default function FramedWeddingInvitation({ config }) {
+export default function FramedWeddingInvitation({ config, hasOpened }) {
   const searchParams = useSearchParams();
 
   // Dynamic Personalized Guest Name from URL (?guest=Name or ?to=Name)
@@ -341,7 +341,7 @@ export default function FramedWeddingInvitation({ config }) {
           0. CINEMATIC SCROLL HERO (FRAME-BY-FRAME MOTION VIDEO)
           ======================================================== */}
       {config?.cinematicFrames?.enabled !== false && (
-        <CinematicScrollHero config={config} />
+        <CinematicScrollHero config={config} hasOpened={hasOpened} />
       )}
 
       {/* ========================================================

@@ -182,7 +182,7 @@ export default function ClientHome({ config }) {
           className={!hasOpened ? "opacity-0 pointer-events-none fixed inset-0 z-[-1]" : ""}
         >
           {/* THE SINGLE MODERN, UNIQUE, ELEGANT FRAMED TEMPLATE */}
-          <FramedWeddingInvitation config={config} />
+          <FramedWeddingInvitation config={config} hasOpened={hasOpened} />
 
           {/* Floating Audio Disc Toggle Button */}
           {config?.audioUrl && (

@@ -6,7 +6,6 @@ import getMongoClientPromise from '@/lib/mongodb';
 
 export const dynamic = 'force-dynamic';
 
-// Natural alphanumeric sort helper (so frame-1, frame-2, ..., frame-10 sort correctly)
 function naturalSort(a, b) {
   return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
 }
@@ -14,17 +13,9 @@ function naturalSort(a, b) {
 export async function POST(request) {
   try {
     const formData = await request.formData();
-    const file = formData.get('file');
     const slug = formData.get('slug') || 'wedding';
-
-    if (!file) {
-      return NextResponse.json({ success: false, error: 'No zip file provided' }, { status: 400 });
-    }
-
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-
-    const zip = await JSZip.loadAsync(buffer);
+    const zipFile = formData.get('file');
+    const directFrames = formData.getAll('frames');
 
     // Target folder inside public
     const targetDir = path.join(process.cwd(), 'public', 'frames', slug);
@@ -38,46 +29,65 @@ export async function POST(request) {
       }
     }
 
-    // Filter valid image files, ignoring macOS metadata folders
-    const imageExtensions = ['.webp', '.jpg', '.jpeg', '.png'];
-    const entries = [];
-
-    zip.forEach((relativePath, zipEntry) => {
-      if (zipEntry.dir) return;
-      if (relativePath.includes('__MACOSX') || relativePath.includes('.DS_Store')) return;
-      
-      const ext = path.extname(relativePath).toLowerCase();
-      if (imageExtensions.includes(ext)) {
-        entries.push({ relativePath, zipEntry, ext });
-      }
-    });
-
-    if (entries.length === 0) {
-      return NextResponse.json({
-        success: false,
-        error: 'No valid image frames (.webp, .jpg, .png) found inside the zip archive.'
-      }, { status: 400 });
-    }
-
-    // Sort entries naturally so sequential frames preserve order
-    entries.sort((a, b) => naturalSort(a.relativePath, b.relativePath));
-
     const frameList = [];
 
-    // Extract and write each frame with standardized padding: frame-0001.ext
-    for (let i = 0; i < entries.length; i++) {
-      const entry = entries[i];
-      const paddedIndex = String(i + 1).padStart(4, '0');
-      const filename = `frame-${paddedIndex}${entry.ext}`;
-      const destPath = path.join(targetDir, filename);
+    // CASE 1: Direct frames uploaded (e.g. from client-side video extractor)
+    if (directFrames && directFrames.length > 0) {
+      for (let i = 0; i < directFrames.length; i++) {
+        const frame = directFrames[i];
+        const ext = path.extname(frame.name || '.webp').toLowerCase() || '.webp';
+        const paddedIndex = String(i + 1).padStart(4, '0');
+        const filename = `frame-${paddedIndex}${ext}`;
+        const destPath = path.join(targetDir, filename);
 
-      const content = await entry.zipEntry.async('nodebuffer');
-      fs.writeFileSync(destPath, content);
+        const arrayBuffer = await frame.arrayBuffer();
+        fs.writeFileSync(destPath, Buffer.from(arrayBuffer));
+        frameList.push(`/frames/${slug}/${filename}`);
+      }
+    } 
+    // CASE 2: ZIP archive uploaded
+    else if (zipFile) {
+      const arrayBuffer = await zipFile.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      const zip = await JSZip.loadAsync(buffer);
 
-      frameList.push(`/frames/${slug}/${filename}`);
+      const imageExtensions = ['.webp', '.jpg', '.jpeg', '.png'];
+      const entries = [];
+
+      zip.forEach((relativePath, zipEntry) => {
+        if (zipEntry.dir) return;
+        if (relativePath.includes('__MACOSX') || relativePath.includes('.DS_Store')) return;
+        
+        const ext = path.extname(relativePath).toLowerCase();
+        if (imageExtensions.includes(ext)) {
+          entries.push({ relativePath, zipEntry, ext });
+        }
+      });
+
+      if (entries.length === 0) {
+        return NextResponse.json({
+          success: false,
+          error: 'No valid image frames (.webp, .jpg, .png) found inside the zip archive.'
+        }, { status: 400 });
+      }
+
+      entries.sort((a, b) => naturalSort(a.relativePath, b.relativePath));
+
+      for (let i = 0; i < entries.length; i++) {
+        const entry = entries[i];
+        const paddedIndex = String(i + 1).padStart(4, '0');
+        const filename = `frame-${paddedIndex}${entry.ext}`;
+        const destPath = path.join(targetDir, filename);
+
+        const content = await entry.zipEntry.async('nodebuffer');
+        fs.writeFileSync(destPath, content);
+        frameList.push(`/frames/${slug}/${filename}`);
+      }
+    } else {
+      return NextResponse.json({ success: false, error: 'No video frames or zip file provided' }, { status: 400 });
     }
 
-    // Also write a manifest.json in the folder for instant client loading
+    // Write manifest.json
     const manifest = {
       slug,
       frameCount: frameList.length,
@@ -86,7 +96,7 @@ export async function POST(request) {
     };
     fs.writeFileSync(path.join(targetDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
 
-    // Update MongoDB config for this slug if available
+    // Update MongoDB config for this slug
     try {
       if (process.env.MONGODB_URI) {
         const client = await getMongoClientPromise();
@@ -105,7 +115,7 @@ export async function POST(request) {
               }
             }
           },
-          { upsert: false }
+          { upsert: true }
         );
       }
     } catch (dbErr) {
@@ -114,14 +124,14 @@ export async function POST(request) {
 
     return NextResponse.json({
       success: true,
-      message: `Successfully extracted ${frameList.length} frames!`,
+      message: `Successfully saved ${frameList.length} customized frames for /${slug}!`,
       frameCount: frameList.length,
       frames: frameList,
       folder: `/frames/${slug}`
     });
 
   } catch (error) {
-    console.error('Error processing zip archive:', error);
+    console.error('Error processing frames upload:', error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

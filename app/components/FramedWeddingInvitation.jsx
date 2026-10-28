@@ -8,6 +8,7 @@ import {
   ChevronDown, Send, CheckCircle2, Navigation, Sparkles,
   ChevronLeft, ChevronRight, X, ArrowUp, UserCheck, Utensils
 } from 'lucide-react';
+import CinematicScrollHero from './CinematicScrollHero';
 
 // ==========================================
 // 1. MONOGRAM COMPONENT (FRAMED CREST)
@@ -308,7 +309,21 @@ export default function FramedWeddingInvitation({ config }) {
   const timeline = Array.isArray(config?.timeline) ? config.timeline : [];
 
   // Hero Portrait Image
-  const heroImg = config?.heroImage || config?.sectionBackgrounds?.hero || (gallery[0]?.src) || null;
+  const heroImg = config?.heroImage || (gallery[0]?.src) || null;
+  const sectionBackgrounds = config?.sectionBackgrounds || {};
+  const getSectionBackgroundStyle = (sectionKey) => {
+    const imageUrl = sectionBackgrounds[sectionKey];
+    if (!imageUrl) return undefined;
+
+    return {
+      backgroundImage: `url("${imageUrl}")`,
+      backgroundAttachment: 'fixed',
+      backgroundPosition: 'center',
+      backgroundRepeat: 'no-repeat',
+      backgroundSize: 'cover',
+      backgroundColor: 'transparent',
+    };
+  };
 
   return (
     <div className="relative w-full overflow-hidden font-sans text-[var(--colorTextDark)] bg-[var(--colorBg)] selection:bg-[var(--colorPrimary)]/20 selection:text-[var(--colorPrimary)]">
@@ -323,9 +338,19 @@ export default function FramedWeddingInvitation({ config }) {
       />
 
       {/* ========================================================
+          0. CINEMATIC SCROLL HERO (FRAME-BY-FRAME MOTION VIDEO)
+          ======================================================== */}
+      {config?.cinematicFrames?.enabled !== false && (
+        <CinematicScrollHero config={config} />
+      )}
+
+      {/* ========================================================
           1. HERO SECTION ("THE GRAND FRAMED ENTRANCE")
           ======================================================== */}
-      <section className="relative min-h-screen flex flex-col items-center justify-center pt-24 pb-20 px-4 sm:px-6 z-10">
+      <section
+        className="relative min-h-screen flex flex-col items-center justify-center pt-24 pb-20 px-4 sm:px-6 z-10"
+        style={getSectionBackgroundStyle('hero')}
+      >
         
         {/* Subtle Ambient Radial Glow */}
         <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] sm:w-[550px] h-[300px] sm:h-[550px] rounded-full bg-[var(--colorPrimary)]/10 blur-[100px] pointer-events-none" />
@@ -466,7 +491,10 @@ export default function FramedWeddingInvitation({ config }) {
       {/* ========================================================
           2. PERSONALIZED VIP GUEST INVITATION CARD
           ======================================================== */}
-      <section className="relative py-12 px-4 sm:px-6 z-10">
+      <section
+        className="relative py-12 px-4 sm:px-6 z-10"
+        style={getSectionBackgroundStyle('guestCard')}
+      >
         <div className="max-w-2xl mx-auto">
           <LuxuryFrame glow={true} className="text-center py-10 px-6 sm:px-12">
             
@@ -500,7 +528,11 @@ export default function FramedWeddingInvitation({ config }) {
       {/* ========================================================
           3. OUR STORY SECTION ("CHAPTERS OF OUR LOVE")
           ======================================================== */}
-      <section id="story-section" className="relative py-16 px-4 sm:px-6 z-10">
+      <section
+        id="story-section"
+        className="relative py-16 px-4 sm:px-6 z-10"
+        style={getSectionBackgroundStyle('story')}
+      >
         <div className="max-w-3xl mx-auto text-center">
           
           {/* Section Header */}
@@ -540,7 +572,11 @@ export default function FramedWeddingInvitation({ config }) {
       {/* ========================================================
           4. WEDDING EVENTS & VENUES (CEREMONY & RECEPTION)
           ======================================================== */}
-      <section id="events-section" className="relative py-16 px-4 sm:px-6 z-10">
+      <section
+        id="events-section"
+        className="relative py-16 px-4 sm:px-6 z-10"
+        style={getSectionBackgroundStyle('events')}
+      >
         <div className="max-w-4xl mx-auto">
           
           <div className="text-center mb-12">
@@ -635,7 +671,11 @@ export default function FramedWeddingInvitation({ config }) {
           5. THE DAY'S TIMELINE ("ORDER OF EVENTS")
           ======================================================== */}
       {timeline.length > 0 && (
-        <section id="timeline-section" className="relative py-16 px-4 sm:px-6 z-10">
+        <section
+          id="timeline-section"
+          className="relative py-16 px-4 sm:px-6 z-10"
+          style={getSectionBackgroundStyle('timeline')}
+        >
           <div className="max-w-2xl mx-auto">
             
             <div className="text-center mb-12">
@@ -687,7 +727,11 @@ export default function FramedWeddingInvitation({ config }) {
           6. "WITH FRAMES" PHOTO GALLERY
           ======================================================== */}
       {gallery.length > 0 && (
-        <section id="gallery-section" className="relative py-16 px-4 sm:px-6 z-10">
+        <section
+          id="gallery-section"
+          className="relative py-16 px-4 sm:px-6 z-10"
+          style={getSectionBackgroundStyle('gallery')}
+        >
           <div className="max-w-5xl mx-auto">
             
             <div className="text-center mb-12">
@@ -794,7 +838,11 @@ export default function FramedWeddingInvitation({ config }) {
       {/* ========================================================
           7. RSVP SECTION ("SAVE YOUR SEAT")
           ======================================================== */}
-      <section id="rsvp-section" className="relative py-20 px-4 sm:px-6 z-10">
+      <section
+        id="rsvp-section"
+        className="relative py-20 px-4 sm:px-6 z-10"
+        style={getSectionBackgroundStyle('rsvp')}
+      >
         <div className="max-w-2xl mx-auto">
           
           <div className="text-center mb-10">
@@ -960,7 +1008,10 @@ export default function FramedWeddingInvitation({ config }) {
       {/* ========================================================
           8. MODERN ELEGANT FOOTER
           ======================================================== */}
-      <footer className="relative py-16 px-4 sm:px-6 border-t border-[var(--colorPrimary)]/20 bg-white/50 backdrop-blur-md z-10 text-center">
+      <footer
+        className="relative py-16 px-4 sm:px-6 border-t border-[var(--colorPrimary)]/20 bg-white/50 backdrop-blur-md z-10 text-center"
+        style={getSectionBackgroundStyle('footer')}
+      >
         <div className="max-w-xl mx-auto flex flex-col items-center">
           
           <FramedMonogram 

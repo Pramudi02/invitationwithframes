@@ -98,8 +98,10 @@ export const getDefaultConfig = (slug) => ({
   },
   sectionBackgrounds: {
     hero: '',
+    guestCard: '',
     story: '',
     events: '',
+    timeline: '',
     gallery: '',
     rsvp: '',
     footer: ''
@@ -115,6 +117,12 @@ export const getDefaultConfig = (slug) => ({
     footer: ''
   },
   sharePreviewImageUrl: '',
+  cinematicFrames: {
+    enabled: true,
+    frameCount: 60,
+    frames: [],
+    folder: ''
+  },
   isActive: true,
   clientPasscode: null  // Optional: set a passcode to protect the client dashboard
 });

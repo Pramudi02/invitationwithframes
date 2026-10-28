@@ -917,6 +917,11 @@ function AdminDashboard({ slug, onBack, showToast }) {
   // ------ Cropper State ------------------------------------------------------------------------------------------------------------------------------
   const [cropping, setCropping] = useState(null); // { file, path, type, aspect }
 
+  // ------ Cinematic Video ZIP Upload State ----------------------------------------------------------------------------------------------------------
+  const [zipUploading, setZipUploading] = useState(false);
+  const [zipMessage, setZipMessage] = useState('');
+  const [previewFrameIndex, setPreviewFrameIndex] = useState(0);
+
   // Deep setter helper
   const setPath = useCallback((path, value) => {
     setConfig(prev => {
@@ -1057,6 +1062,46 @@ function AdminDashboard({ slug, onBack, showToast }) {
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleZipUpload = async (file) => {
+    if (!file) return;
+    setZipUploading(true);
+    setZipMessage('Uploading ZIP archive and extracting frames...');
+    showToast('success', 'Processing ZIP archive...');
+
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('slug', slug || config?.slug || 'wedding');
+
+      const res = await fetch('/api/upload-frames', {
+        method: 'POST',
+        body: fd
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        setZipMessage(`Success! Extracted ${data.frameCount} frames.`);
+        setPath('cinematicFrames', {
+          enabled: true,
+          frameCount: data.frameCount,
+          frames: data.frames,
+          folder: data.folder,
+          poster: data.frames[0] || ''
+        });
+        setPreviewFrameIndex(0);
+        showToast('success', `Extracted ${data.frameCount} frames from ZIP!`);
+      } else {
+        setZipMessage(`Error: ${data.error || 'Failed to extract'}`);
+        showToast('error', data.error || 'Failed to extract ZIP');
+      }
+    } catch (err) {
+      setZipMessage(`Error: ${err.message}`);
+      showToast('error', err.message);
+    } finally {
+      setZipUploading(false);
     }
   };
 
@@ -1362,6 +1407,7 @@ function AdminDashboard({ slug, onBack, showToast }) {
     { id: 'backgrounds', label: '🖼️ Backgrounds' },
     { id: 'replacements', label: '🔁 Replace Sections' },
     { id: 'decor', label: '✨ Decoration' },
+    { id: 'cinematic', label: '🎬 Scroll Video (ZIP)' },
   ];
 
   return (
@@ -2863,6 +2909,7 @@ function AdminDashboard({ slug, onBack, showToast }) {
                   { id: 'guestCard', label: 'Guest Card Background' },
                   { id: 'story', label: 'Story Background' },
                   { id: 'events', label: 'Events Background' },
+                  { id: 'timeline', label: 'Timeline Background' },
                   { id: 'gallery', label: 'Gallery Background' },
                   { id: 'rsvp', label: 'RSVP Background' },
                   { id: 'footer', label: 'Footer Background' }
@@ -2994,6 +3041,104 @@ function AdminDashboard({ slug, onBack, showToast }) {
                 </div>
               </FieldGroup>
             </SectionCard>
+          )}
+
+          {activeTab === 'cinematic' && (
+            <div className="flex flex-col gap-6">
+              <SectionCard title="Cinematic Scroll Video (Frames)" icon="🎬">
+                <FieldGroup label="Enable Scroll Video" hint="When enabled, the top of the wedding invitation plays as a scroll-scrubbed cinematic frame animation.">
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setPath('cinematicFrames.enabled', !(config?.cinematicFrames?.enabled ?? true))}
+                      className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider border transition-all ${
+                        (config?.cinematicFrames?.enabled ?? true)
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                          : 'bg-slate-100 text-slate-500 border-slate-300'
+                      }`}
+                    >
+                      {(config?.cinematicFrames?.enabled ?? true) ? 'Active & Enabled' : 'Disabled'}
+                    </button>
+                    <span className="text-xs text-slate-500">
+                      Total Frames: <strong className="text-slate-800">{config?.cinematicFrames?.frameCount || 60}</strong> frames loaded
+                    </span>
+                  </div>
+                </FieldGroup>
+
+                <FieldGroup label="Upload Frame Sequence (.ZIP Archive)" hint="Upload any ZIP file containing sequential images (e.g. frame-0001.webp, frame-0002.webp, or .jpg, .png). Any number of frames is supported!">
+                  <div className="flex flex-col gap-3">
+                    <label className={`relative border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all ${
+                      zipUploading ? 'border-amber-400 bg-amber-50/50' : 'border-[#C9956A]/40 hover:border-[#C9956A] bg-white hover:bg-[#FAF7F2]/50'
+                    }`}>
+                      <input
+                        type="file"
+                        accept=".zip,application/zip"
+                        className="hidden"
+                        disabled={zipUploading}
+                        onChange={(e) => {
+                          if (e.target.files?.[0]) {
+                            handleZipUpload(e.target.files[0]);
+                          }
+                        }}
+                      />
+                      <div className="flex flex-col items-center gap-2">
+                        <span className="text-4xl">📦</span>
+                        <span className="text-sm font-bold text-[#2C2018]">
+                          {zipUploading ? 'Extracting Frames...' : 'Choose or Drop a .ZIP File Here'}
+                        </span>
+                        <span className="text-xs text-slate-400 max-w-sm">
+                          Supports any number of frames (60, 120, 240+ frames). Image files inside the zip are automatically sorted and mapped.
+                        </span>
+                      </div>
+                    </label>
+
+                    {zipMessage && (
+                      <p className={`text-xs font-semibold ${zipMessage.startsWith('Success') ? 'text-emerald-600' : zipMessage.startsWith('Error') ? 'text-red-600' : 'text-amber-600'}`}>
+                        {zipMessage}
+                      </p>
+                    )}
+                  </div>
+                </FieldGroup>
+
+                <FieldGroup label="Frame Scrubber Preview" hint="Drag the slider to test scrolling through your animation frames directly.">
+                  <div className="flex flex-col gap-3 p-4 rounded-xl border border-slate-200 bg-slate-50">
+                    <div className="relative aspect-[9/16] max-w-xs mx-auto overflow-hidden rounded-xl border border-[#C9956A]/40 bg-black shadow-md">
+                      {config?.cinematicFrames?.frames?.[previewFrameIndex] ? (
+                        <img
+                          src={config.cinematicFrames.frames[previewFrameIndex]}
+                          alt={`Frame ${previewFrameIndex + 1}`}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <img
+                          src={`/frames/${slug || config?.slug || 'wedding'}/frame-${String(previewFrameIndex + 1).padStart(4, '0')}.webp`}
+                          alt={`Frame ${previewFrameIndex + 1}`}
+                          className="w-full h-full object-cover"
+                        />
+                      )}
+                      <span className="absolute bottom-2 left-2 px-2 py-0.5 rounded-md bg-black/70 text-white text-[10px] font-mono">
+                        Frame {previewFrameIndex + 1} / {config?.cinematicFrames?.frameCount || 60}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-3 mt-2">
+                      <span className="text-xs font-mono text-slate-500">1</span>
+                      <input
+                        type="range"
+                        min="0"
+                        max={(config?.cinematicFrames?.frameCount || 60) - 1}
+                        value={previewFrameIndex}
+                        onChange={(e) => setPreviewFrameIndex(Number(e.target.value))}
+                        className="flex-1 accent-[#C9956A] cursor-pointer"
+                      />
+                      <span className="text-xs font-mono text-slate-500">
+                        {config?.cinematicFrames?.frameCount || 60}
+                      </span>
+                    </div>
+                  </div>
+                </FieldGroup>
+              </SectionCard>
+            </div>
           )}
 
           {activeTab === 'labels' && (() => {

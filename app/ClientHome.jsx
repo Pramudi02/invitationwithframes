@@ -82,6 +82,10 @@ export default function ClientHome({ config }) {
         .then(() => setAudioPlaying(true))
         .catch(() => {});
     }
+    setTimeout(() => {
+      window.dispatchEvent(new Event('resize'));
+      window.dispatchEvent(new Event('scroll'));
+    }, 100);
   };
 
   const handleRevealStart = () => {

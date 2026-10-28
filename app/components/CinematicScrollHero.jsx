@@ -1,17 +1,20 @@
 'use client';
 
-import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { ChevronDown } from 'lucide-react';
 
 export default function CinematicScrollHero({ config, hasOpened }) {
   const containerRef = useRef(null);
   const canvasRef = useRef(null);
   const imagesRef = useRef([]);
-  const currentFrameRef = useRef(-1);
+
   const activeFrameRef = useRef(0);
+  const totalFramesRef = useRef(0);
+  const lastStepTimeRef = useRef(0);
+  const deltaAccumulatorRef = useRef(0);
+  const touchStartYRef = useRef(null);
 
   const [frameList, setFrameList] = useState([]);
-  const [scrollProgress, setScrollProgress] = useState(0);
   const [activeFrameIndex, setActiveFrameIndex] = useState(0);
 
   // Extract couple info for subtle elegant top badge
@@ -55,6 +58,7 @@ export default function CinematicScrollHero({ config, hasOpened }) {
   }, [config?.slug, config?.cinematicFrames]);
 
   const totalFrames = frameList.length;
+  totalFramesRef.current = totalFrames;
 
   // 2. High-performance canvas drawing
   const drawFrame = useCallback((frameIdx) => {
@@ -86,7 +90,7 @@ export default function CinematicScrollHero({ config, hasOpened }) {
 
     let drawW, drawH, drawX, drawY;
 
-    // Desktop widescreen: contain mode to keep full vertical envelope visible
+    // Desktop widescreen: contain mode to keep full vertical envelope visible in the exact same center position
     if (canvasRatio > 1.1) {
       const scale = height / imgHeight;
       drawW = imgWidth * scale;
@@ -106,8 +110,6 @@ export default function CinematicScrollHero({ config, hasOpened }) {
 
     ctx.clearRect(0, 0, width, height);
     ctx.drawImage(img, 0, 0, imgWidth, imgHeight, drawX, drawY, drawW, drawH);
-
-    currentFrameRef.current = frameIdx;
   }, []);
 
   // 3. Preload all frame images into memory
@@ -123,7 +125,6 @@ export default function CinematicScrollHero({ config, hasOpened }) {
 
       img.onload = () => {
         if (isCancelled) return;
-        // If this image is the active frame (or initial frame 0), draw it immediately!
         if (idx === activeFrameRef.current || (activeFrameRef.current === 0 && idx === 0)) {
           drawFrame(idx);
         }
@@ -134,7 +135,6 @@ export default function CinematicScrollHero({ config, hasOpened }) {
 
     imagesRef.current = loadedImages;
 
-    // If frame 0 is already cached in browser memory, draw immediately
     if (loadedImages[0] && loadedImages[0].complete && loadedImages[0].naturalWidth > 0) {
       drawFrame(0);
     }
@@ -161,9 +161,7 @@ export default function CinematicScrollHero({ config, hasOpened }) {
     canvas.style.width = `${width}px`;
     canvas.style.height = `${height}px`;
 
-    // Immediately repaint active frame
-    const activeIdx = activeFrameRef.current >= 0 ? activeFrameRef.current : 0;
-    drawFrame(activeIdx);
+    drawFrame(activeFrameRef.current);
   }, [drawFrame]);
 
   useEffect(() => {
@@ -187,123 +185,249 @@ export default function CinematicScrollHero({ config, hasOpened }) {
     }
   }, [hasOpened, resizeCanvas, drawFrame]);
 
-  // 6. Scroll-scrubbing engine
+  // 6. Step to frame helper
+  const setFrame = useCallback((newIdx) => {
+    const clamped = Math.max(0, Math.min(totalFramesRef.current - 1, newIdx));
+    if (clamped !== activeFrameRef.current) {
+      activeFrameRef.current = clamped;
+      setActiveFrameIndex(clamped);
+      drawFrame(clamped);
+    }
+  }, [drawFrame]);
+
+  const stepNext = useCallback(() => {
+    if (activeFrameRef.current < totalFramesRef.current - 1) {
+      setFrame(activeFrameRef.current + 1);
+      return true;
+    }
+    return false;
+  }, [setFrame]);
+
+  const stepPrev = useCallback(() => {
+    if (activeFrameRef.current > 0) {
+      setFrame(activeFrameRef.current - 1);
+      return true;
+    }
+    return false;
+  }, [setFrame]);
+
+  // 7. IN-PLACE FRAME SCROLL ENGINE
+  // Locks position at the top while frames advance one-by-one on scroll.
+  // The element DOES NOT move up until the last frame is reached!
   useEffect(() => {
-    if (totalFrames === 0) return;
+    if (totalFrames <= 1) return;
 
-    let ticking = false;
+    const STEP_THRESHOLD = 35; // pixel delta accumulation
+    const STEP_COOLDOWN = 60;  // ms minimum between frames for silky smooth scrubbing
 
-    const handleScroll = () => {
-      if (!ticking) {
-        window.requestAnimationFrame(() => {
-          const container = containerRef.current;
-          if (!container) {
-            ticking = false;
-            return;
+    // Mouse Wheel / Trackpad Scroll
+    const handleWheel = (e) => {
+      const scrollY = window.scrollY || window.pageYOffset || 0;
+      const current = activeFrameRef.current;
+      const total = totalFramesRef.current;
+      const now = performance.now();
+
+      // If scrolling DOWN and not yet at the last frame:
+      if (e.deltaY > 0 && current < total - 1) {
+        // Prevent page from scrolling up! Stay in same position!
+        e.preventDefault();
+
+        if (now - lastStepTimeRef.current > STEP_COOLDOWN) {
+          deltaAccumulatorRef.current += e.deltaY;
+          if (deltaAccumulatorRef.current >= STEP_THRESHOLD) {
+            deltaAccumulatorRef.current = 0;
+            lastStepTimeRef.current = now;
+            stepNext();
           }
+        }
+        return;
+      }
 
-          const rect = container.getBoundingClientRect();
-          const totalScrollDistance = rect.height - window.innerHeight;
+      // If scrolling UP and at the very top of the page:
+      if (e.deltaY < 0 && scrollY <= 5 && current > 0) {
+        e.preventDefault();
 
-          if (totalScrollDistance > 0) {
-            // progress: 0.0 at top of section, 1.0 at bottom of section
-            const rawProgress = -rect.top / totalScrollDistance;
-            const progress = Math.max(0, Math.min(1, rawProgress));
-            setScrollProgress(progress);
-
-            // Compute frame index (0 to totalFrames - 1)
-            const targetFrame = Math.min(
-              totalFrames - 1,
-              Math.max(0, Math.floor(progress * totalFrames))
-            );
-
-            activeFrameRef.current = targetFrame;
-            setActiveFrameIndex(targetFrame);
-            drawFrame(targetFrame);
+        if (now - lastStepTimeRef.current > STEP_COOLDOWN) {
+          deltaAccumulatorRef.current += e.deltaY;
+          if (deltaAccumulatorRef.current <= -STEP_THRESHOLD) {
+            deltaAccumulatorRef.current = 0;
+            lastStepTimeRef.current = now;
+            stepPrev();
           }
+        }
+        return;
+      }
 
-          ticking = false;
-        });
-        ticking = true;
+      // Otherwise: At the last frame and scrolling down -> allow normal page scroll down!
+    };
+
+    // Touch events for Mobile (iPhone, Android)
+    const handleTouchStart = (e) => {
+      if (e.touches && e.touches.length > 0) {
+        touchStartYRef.current = e.touches[0].clientY;
       }
     };
 
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    // Run once on mount
-    handleScroll();
+    const handleTouchMove = (e) => {
+      if (touchStartYRef.current === null || !e.touches || e.touches.length === 0) return;
 
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, [totalFrames, drawFrame]);
+      const currentY = e.touches[0].clientY;
+      const diffY = touchStartYRef.current - currentY;
+      const scrollY = window.scrollY || window.pageYOffset || 0;
+      const current = activeFrameRef.current;
+      const total = totalFramesRef.current;
+      const now = performance.now();
 
-  // 7. Natural scroll track height (scales with number of frames)
-  const scrollHeight = useMemo(() => {
-    if (totalFrames <= 0) return '100vh';
-    if (totalFrames <= 20) return `${Math.max(220, totalFrames * 22)}vh`;
-    if (totalFrames <= 60) return `${Math.max(300, totalFrames * 6)}vh`;
-    return `${Math.min(650, totalFrames * 2.5)}vh`;
-  }, [totalFrames]);
+      // Swiping UP (scrolling down)
+      if (diffY > 20 && current < total - 1) {
+        e.preventDefault();
 
+        if (now - lastStepTimeRef.current > STEP_COOLDOWN) {
+          if (diffY > 30) {
+            touchStartYRef.current = currentY;
+            lastStepTimeRef.current = now;
+            stepNext();
+          }
+        }
+        return;
+      }
+
+      // Swiping DOWN (scrolling up at top of page)
+      if (diffY < -20 && scrollY <= 5 && current > 0) {
+        e.preventDefault();
+
+        if (now - lastStepTimeRef.current > STEP_COOLDOWN) {
+          if (diffY < -30) {
+            touchStartYRef.current = currentY;
+            lastStepTimeRef.current = now;
+            stepPrev();
+          }
+        }
+        return;
+      }
+    };
+
+    const handleTouchEnd = () => {
+      touchStartYRef.current = null;
+    };
+
+    // Keyboard ArrowDown / ArrowUp / Space support
+    const handleKeyDown = (e) => {
+      const scrollY = window.scrollY || window.pageYOffset || 0;
+      const current = activeFrameRef.current;
+      const total = totalFramesRef.current;
+
+      if ((e.key === 'ArrowDown' || e.key === ' ' || e.key === 'PageDown') && current < total - 1) {
+        e.preventDefault();
+        stepNext();
+      } else if ((e.key === 'ArrowUp' || e.key === 'PageUp') && scrollY <= 5 && current > 0) {
+        e.preventDefault();
+        stepPrev();
+      }
+    };
+
+    window.addEventListener('wheel', handleWheel, { passive: false });
+    window.addEventListener('touchstart', handleTouchStart, { passive: true });
+    window.addEventListener('touchmove', handleTouchMove, { passive: false });
+    window.addEventListener('touchend', handleTouchEnd, { passive: true });
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.removeEventListener('wheel', handleWheel);
+      window.removeEventListener('touchstart', handleTouchStart);
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleTouchEnd);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [totalFrames, stepNext, stepPrev]);
+
+  const isLastFrame = activeFrameIndex >= totalFrames - 1;
   const currentFrameUrl = frameList[activeFrameIndex] || frameList[0] || '';
+
+  // Handler when user clicks bottom cue or envelope
+  const handleStageClick = () => {
+    if (!isLastFrame) {
+      stepNext();
+    } else {
+      // At last frame, smooth scroll to the next invitation section
+      const nextSection = document.getElementById('hero-invitation-section');
+      if (nextSection) {
+        nextSection.scrollIntoView({ behavior: 'smooth' });
+      } else {
+        window.scrollBy({ top: window.innerHeight * 0.9, behavior: 'smooth' });
+      }
+    }
+  };
 
   return (
     <section
       ref={containerRef}
       aria-label="Cinematic Frame Motion Section"
-      className="relative w-full z-10"
-      style={{ height: scrollHeight }}
+      className="relative w-full h-screen h-[100dvh] overflow-hidden bg-[#0d0407] flex items-center justify-center select-none"
     >
-      {/* Sticky 100dvh Fullscreen Viewport Stage */}
-      <div className="sticky top-0 w-full h-screen h-[100dvh] overflow-hidden bg-[#0d0407] flex items-center justify-center">
-        
-        {/* 1. Ambient Blurred Backdrop for widescreen displays */}
-        {currentFrameUrl && (
-          <img
-            src={currentFrameUrl}
-            alt=""
-            aria-hidden="true"
-            className="absolute inset-0 w-full h-full object-cover blur-3xl opacity-40 scale-110 pointer-events-none z-0"
-          />
-        )}
-
-        {/* 2. Hardware-accelerated visible image layer (GUARANTEES 100% VISIBILITY AT ALL TIMES) */}
-        {currentFrameUrl && (
-          <img
-            src={currentFrameUrl}
-            alt="Wedding envelope frame"
-            className="absolute inset-0 w-full h-full object-contain pointer-events-none z-[1]"
-          />
-        )}
-
-        {/* 3. High-performance canvas scrub layer for 60fps frame painting */}
-        <canvas
-          ref={canvasRef}
-          className="absolute inset-0 w-full h-full block bg-transparent pointer-events-none z-[2]"
+      {/* 1. Ambient Blurred Backdrop for widescreen displays */}
+      {currentFrameUrl && (
+        <img
+          src={currentFrameUrl}
+          alt=""
+          aria-hidden="true"
+          className="absolute inset-0 w-full h-full object-cover blur-3xl opacity-35 scale-110 pointer-events-none z-0"
         />
+      )}
 
-        {/* 4. Elegant Minimal Top Pill Badge (Does not obstruct wax seal) */}
-        <div
-          className="absolute top-6 left-1/2 -translate-x-1/2 pointer-events-none z-10 transition-opacity duration-500 select-none"
-          style={{ opacity: scrollProgress < 0.92 ? 1 : 0 }}
-        >
-          <div className="px-5 py-2 rounded-full bg-black/45 backdrop-blur-md border border-[#D9A85C]/35 text-center shadow-lg">
-            <p className="font-sans text-[10px] sm:text-xs font-semibold tracking-[0.25em] uppercase text-[#F2EFE7]">
-              {displayNames}
-            </p>
-          </div>
+      {/* 2. Hardware-accelerated visible image layer (GUARANTEES 100% VISIBILITY IN SAME POSITION) */}
+      {currentFrameUrl && (
+        <img
+          src={currentFrameUrl}
+          alt="Wedding envelope frame"
+          className="absolute inset-0 w-full h-full object-contain pointer-events-none z-[1]"
+        />
+      )}
+
+      {/* 3. High-performance canvas scrub layer for 60fps frame painting */}
+      <canvas
+        ref={canvasRef}
+        className="absolute inset-0 w-full h-full block bg-transparent pointer-events-none z-[2]"
+      />
+
+      {/* 4. Elegant Minimal Top Pill Badge (Does not obstruct wax seal) */}
+      <div className="absolute top-6 left-1/2 -translate-x-1/2 pointer-events-none z-10 select-none">
+        <div className="px-5 py-2 rounded-full bg-black/45 backdrop-blur-md border border-[#D9A85C]/35 text-center shadow-lg">
+          <p className="font-sans text-[10px] sm:text-xs font-semibold tracking-[0.25em] uppercase text-[#F2EFE7]">
+            {displayNames}
+          </p>
+        </div>
+      </div>
+
+      {/* 5. Interactive Bottom Cue Indicator */}
+      <div
+        onClick={handleStageClick}
+        className="absolute bottom-6 sm:bottom-8 flex flex-col items-center text-white/90 z-20 cursor-pointer select-none transition-all duration-300 hover:scale-105 active:scale-95"
+      >
+        <span className="font-sans text-[9px] sm:text-[10px] font-bold tracking-[0.3em] uppercase mb-1 drop-shadow-md text-[#FBE398]">
+          {!isLastFrame ? 'Scroll down to open' : 'Scroll to view invitation'}
+        </span>
+
+        {/* Subtle Frame Dots Indicator */}
+        <div className="flex items-center gap-1 my-1.5">
+          {frameList.map((_, idx) => (
+            <span
+              key={idx}
+              className={`h-1 rounded-full transition-all duration-200 ${
+                idx === activeFrameIndex
+                  ? 'w-4 bg-[#FBE398]'
+                  : 'w-1 bg-white/30'
+              }`}
+            />
+          ))}
         </div>
 
-        {/* 5. Sleek Scroll-Down Indicator Cue */}
-        <div
-          className="absolute bottom-6 sm:bottom-8 flex flex-col items-center text-white/90 pointer-events-none z-10 transition-opacity duration-300 select-none"
-          style={{ opacity: scrollProgress < 0.85 ? Math.max(0, 1 - scrollProgress * 1.3) : 0 }}
-        >
-          <span className="font-sans text-[9px] sm:text-[10px] font-bold tracking-[0.3em] uppercase mb-1 drop-shadow-md text-[#FBE398]">
-            Scroll down to open
-          </span>
-          <div className="w-[1px] h-7 bg-gradient-to-b from-[#FBE398] to-transparent animate-pulse" />
-          <ChevronDown size={16} className="animate-bounce mt-1 text-[#FBE398] drop-shadow" />
-        </div>
-
+        <ChevronDown
+          size={18}
+          className={`text-[#FBE398] drop-shadow transition-transform duration-300 ${
+            isLastFrame ? 'animate-bounce' : 'animate-pulse'
+          }`}
+        />
       </div>
     </section>
   );

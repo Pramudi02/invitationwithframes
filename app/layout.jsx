@@ -107,7 +107,7 @@ export async function generateMetadata() {
 export default async function RootLayout({ children }) {
   return (
     <html lang="en" className={`${alexBrush.variable} ${playfair.variable} ${montserrat.variable} ${notoSinhala.variable}`} data-scroll-behavior="smooth">
-      <body className="font-sans antialiased overflow-x-hidden" suppressHydrationWarning>
+      <body className="font-sans antialiased overflow-x-clip" suppressHydrationWarning>
         <ServiceWorkerRegistration />
         {children}
       </body>

@@ -326,7 +326,7 @@ export default function FramedWeddingInvitation({ config, hasOpened }) {
   };
 
   return (
-    <div className="relative w-full overflow-hidden font-sans text-[var(--colorTextDark)] bg-[var(--colorBg)] selection:bg-[var(--colorPrimary)]/20 selection:text-[var(--colorPrimary)]">
+    <div className="relative w-full overflow-x-clip font-sans text-[var(--colorTextDark)] bg-[var(--colorBg)] selection:bg-[var(--colorPrimary)]/20 selection:text-[var(--colorPrimary)]">
       
       {/* Background Decorative Floral / Pinstripe Texture */}
       <div 
@@ -348,6 +348,7 @@ export default function FramedWeddingInvitation({ config, hasOpened }) {
           1. HERO SECTION ("THE GRAND FRAMED ENTRANCE")
           ======================================================== */}
       <section
+        id="hero-invitation-section"
         className="relative min-h-screen flex flex-col items-center justify-center pt-24 pb-20 px-4 sm:px-6 z-10"
         style={getSectionBackgroundStyle('hero')}
       >

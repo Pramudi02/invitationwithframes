@@ -3,8 +3,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import JSZip from 'jszip';
 import { 
-  Upload, Film, Sparkles, CheckCircle2, AlertCircle, 
-  Play, Pause, RefreshCw, Eye, Sliders, ArrowRight, Layers 
+  Upload, Film, Sparkles, CheckCircle2, Check, CheckSquare, 
+  Play, Pause, RefreshCw, Eye, ArrowRight, Layers, FileVideo 
 } from 'lucide-react';
 
 export default function VideoToFramesConverter({ 
@@ -23,7 +23,9 @@ export default function VideoToFramesConverter({
   const [webpQuality, setWebpQuality] = useState(80); // 50 to 95
   const [targetSlug, setTargetSlug] = useState(currentSlug);
 
-  // Processing state
+  // Processing state & step tracking
+  // Step state: 'idle' | 'video_ready' | 'dividing_frames' | 'compressing_webp' | 'saving_files' | 'syncing_db' | 'completed'
+  const [currentStep, setCurrentStep] = useState(existingFrames?.length > 0 ? 'completed' : 'idle');
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState({ current: 0, total: 0, percent: 0, statusText: '' });
   const [currentFramePreview, setCurrentFramePreview] = useState(null);
@@ -61,6 +63,7 @@ export default function VideoToFramesConverter({
     setResultSummary(null);
     setExtractedThumbnails([]);
     setCurrentFramePreview(null);
+    setCurrentStep('video_ready');
 
     // Read video metadata
     const tempVideo = document.createElement('video');
@@ -86,6 +89,7 @@ export default function VideoToFramesConverter({
     setIsProcessing(true);
     setResultSummary(null);
     setExtractedThumbnails([]);
+    setCurrentStep('dividing_frames');
     setProgress({ current: 0, total: targetFrameCount, percent: 0, statusText: 'Initializing video decoder...' });
 
     try {
@@ -97,7 +101,7 @@ export default function VideoToFramesConverter({
 
       await new Promise((resolve, reject) => {
         video.onloadedmetadata = () => resolve();
-        video.onerror = (e) => reject(new Error('Failed to load video into decoding engine.'));
+        video.onerror = () => reject(new Error('Failed to load video into decoding engine.'));
       });
 
       const duration = video.duration;
@@ -122,7 +126,6 @@ export default function VideoToFramesConverter({
       const ctx = canvas.getContext('2d', { alpha: false });
 
       const zip = new JSZip();
-      const extractedFrames = [];
       const thumbs = [];
       let totalBytes = 0;
 
@@ -131,6 +134,11 @@ export default function VideoToFramesConverter({
       // Extract each frame sequentially
       for (let i = 0; i < targetFrameCount; i++) {
         const targetTime = (i / Math.max(1, targetFrameCount - 1)) * duration;
+
+        // Step 2 & 3: Dividing and Compressing
+        if (i === Math.floor(targetFrameCount / 2)) {
+          setCurrentStep('compressing_webp');
+        }
 
         // Seek video to exact timestamp
         await new Promise((resSeek) => {
@@ -169,16 +177,18 @@ export default function VideoToFramesConverter({
           current: i + 1,
           total: targetFrameCount,
           percent,
-          statusText: `Extracting & compressing frame ${i + 1} of ${targetFrameCount} (${percent}%)...`
+          statusText: `Dividing & compressing frame ${i + 1} of ${targetFrameCount} (${percent}%)...`
         });
       }
 
-      // Generate Zip Archive
+      // Step 4: Package into Archive & Save
+      setCurrentStep('saving_files');
       setProgress(prev => ({ ...prev, statusText: 'Packaging WebP frames into zip archive...' }));
       const zipBlob = await zip.generateAsync({ type: 'blob' });
 
-      // Upload to server
-      setProgress(prev => ({ ...prev, statusText: `Saving customized frames for "/${targetSlug}"...` }));
+      // Step 5: Upload and Sync Database
+      setCurrentStep('syncing_db');
+      setProgress(prev => ({ ...prev, statusText: `Saving and syncing frames for "/${targetSlug}"...` }));
       const fd = new FormData();
       fd.append('file', zipBlob, 'frames.zip');
       fd.append('slug', targetSlug);
@@ -196,6 +206,8 @@ export default function VideoToFramesConverter({
       const avgKb = Math.round((totalBytes / targetFrameCount / 1024) * 10) / 10;
       const totalMb = Math.round((totalBytes / (1024 * 1024)) * 100) / 100;
 
+      // Step 6: Completed!
+      setCurrentStep('completed');
       setResultSummary({
         frameCount: targetFrameCount,
         resolution: `${targetW}x${targetH}`,
@@ -249,6 +261,108 @@ export default function VideoToFramesConverter({
   }, [videoPreviewUrl]);
 
   const activeFramesList = resultSummary?.frames || existingFrames || [];
+
+  // ========================================================
+  // CHECKLIST TO-DO ITEMS DEFINITION WITH RIGHT MARKS (✓)
+  // ========================================================
+  const isHasExisting = activeFramesList.length > 0 && !selectedFile;
+
+  // Step 1: Video selection
+  const step1Done = Boolean(selectedFile) || isHasExisting;
+  const step1Status = step1Done ? 'done' : 'pending';
+
+  // Step 2: Divide into frames
+  const step2Active = currentStep === 'dividing_frames';
+  const step2Done = ['compressing_webp', 'saving_files', 'syncing_db', 'completed'].includes(currentStep) || isHasExisting;
+  const step2Status = step2Done ? 'done' : step2Active ? 'active' : 'pending';
+
+  // Step 3: Size-compress to WebP
+  const step3Active = currentStep === 'compressing_webp';
+  const step3Done = ['saving_files', 'syncing_db', 'completed'].includes(currentStep) || isHasExisting;
+  const step3Status = step3Done ? 'done' : step3Active ? 'active' : 'pending';
+
+  // Step 4: Save frames & manifest
+  const step4Active = currentStep === 'saving_files';
+  const step4Done = ['syncing_db', 'completed'].includes(currentStep) || isHasExisting;
+  const step4Status = step4Done ? 'done' : step4Active ? 'active' : 'pending';
+
+  // Step 5: Sync with invitation database
+  const step5Active = currentStep === 'syncing_db';
+  const step5Done = currentStep === 'completed' || isHasExisting;
+  const step5Status = step5Done ? 'done' : step5Active ? 'active' : 'pending';
+
+  // Step 6: Ready for live scrubbing
+  const step6Done = currentStep === 'completed' || isHasExisting;
+  const step6Status = step6Done ? 'done' : 'pending';
+
+  const todoList = [
+    {
+      id: 1,
+      title: 'Upload Video & Inspect',
+      desc: selectedFile 
+        ? `${selectedFile.name} (${videoMeta.duration}s • ${videoMeta.width}x${videoMeta.height} • ${videoMeta.sizeMb}MB)`
+        : isHasExisting
+          ? 'Video frame set active in invitation'
+          : 'Select any MP4, MOV, or WebM video file',
+      status: step1Status,
+      badge: step1Done ? '✓ Uploaded' : 'Waiting for file'
+    },
+    {
+      id: 2,
+      title: 'Divide Video into Frames',
+      desc: step2Active
+        ? `Dividing frame ${progress.current} of ${progress.total} (${progress.percent}%)...`
+        : step2Done
+          ? `Divided into ${resultSummary?.frameCount || activeFramesList.length} sequential frames`
+          : `Will extract ${targetFrameCount} frames across video timeline`,
+      status: step2Status,
+      badge: step2Done ? '✓ Divided' : step2Active ? '⏳ Extracting' : 'Step 2'
+    },
+    {
+      id: 3,
+      title: 'Size-Compress to WebP',
+      desc: step3Active
+        ? `Compressing frames to WebP (${webpQuality}% quality)...`
+        : step3Done
+          ? `WebP compressed (Avg: ${resultSummary?.avgKb || '~35'} KB/frame • Total: ${resultSummary?.totalMb || '~0.9'} MB)`
+          : `Quality: ${webpQuality}% • Scale: ${targetResolution} (Target ~35-45 KB/frame)`,
+      status: step3Status,
+      badge: step3Done ? '✓ Compressed' : step3Active ? '⏳ Compressing' : 'Step 3'
+    },
+    {
+      id: 4,
+      title: 'Save to Destination Folder',
+      desc: step4Active
+        ? `Writing frames to /frames/${targetSlug}/...`
+        : step4Done
+          ? `Saved to public/frames/${targetSlug}/ & generated manifest.json`
+          : `Target folder: /public/frames/${targetSlug}/`,
+      status: step4Status,
+      badge: step4Done ? '✓ Saved' : step4Active ? '⏳ Writing' : 'Step 4'
+    },
+    {
+      id: 5,
+      title: 'Sync with Invitation Database',
+      desc: step5Active
+        ? `Updating MongoDB cinematicFrames config for /${targetSlug}...`
+        : step5Done
+          ? `Active & linked to invitation /${targetSlug}`
+          : `Will link cinematicFrames to invitation /${targetSlug}`,
+      status: step5Status,
+      badge: step5Done ? '✓ Linked' : step5Active ? '⏳ Syncing' : 'Step 5'
+    },
+    {
+      id: 6,
+      title: 'Ready for Live Scrubbing',
+      desc: step6Done
+        ? 'All steps complete! Drag slider below to test scrub, or view live.'
+        : 'Scrubber preview unlocks as soon as frames are saved',
+      status: step6Status,
+      badge: step6Done ? '✓ Ready' : 'Pending'
+    }
+  ];
+
+  const completedCount = todoList.filter(t => t.status === 'done').length;
 
   return (
     <div className="flex flex-col gap-6">
@@ -321,6 +435,7 @@ export default function VideoToFramesConverter({
                     onClick={() => {
                       setSelectedFile(null);
                       setVideoPreviewUrl(null);
+                      setCurrentStep('idle');
                     }}
                     className="text-[11px] text-rose-500 hover:underline font-semibold"
                   >
@@ -466,35 +581,120 @@ export default function VideoToFramesConverter({
           </div>
         )}
 
-        {/* Result Summary */}
-        {resultSummary && (
-          <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-emerald-900">
-            <div className="flex items-center gap-2.5">
-              <CheckCircle2 size={20} className="text-emerald-600 shrink-0" />
-              <div>
-                <p className="text-xs font-bold">
-                  Successfully converted & saved {resultSummary.frameCount} frames for /{targetSlug}!
-                </p>
-                <p className="text-[11px] text-emerald-700/80">
-                  Resolution: {resultSummary.resolution} • Avg: {resultSummary.avgKb} KB/frame • Total Size: {resultSummary.totalMb} MB
-                </p>
-              </div>
+      </div>
+
+      {/* ========================================================
+          2. TO-DO COMPLETING PIPELINE CHECKLIST CARD (WITH RIGHT MARKS ✓)
+          ======================================================== */}
+      <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex flex-col gap-4">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div className="flex items-center gap-2">
+            <span className="p-1.5 rounded-lg bg-[#C9956A]/10 text-[#C9956A]">
+              <CheckSquare size={18} />
+            </span>
+            <div>
+              <h4 className="text-sm font-bold text-slate-800">
+                Conversion & Setup Checklist
+              </h4>
+              <p className="text-xs text-slate-400">
+                Step-by-step progress checklist for video division, compression, and invitation integration.
+              </p>
             </div>
+          </div>
+          <span className={`text-xs font-bold px-3 py-1 rounded-full border ${
+            completedCount === 6
+              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+              : 'bg-amber-50 text-amber-700 border-amber-200'
+          }`}>
+            {completedCount} of 6 Completed
+          </span>
+        </div>
+
+        {/* 6 Step Cards with Right Marks */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {todoList.map((step) => {
+            const isDone = step.status === 'done';
+            const isActive = step.status === 'active';
+
+            return (
+              <div
+                key={step.id}
+                className={`p-3.5 rounded-xl border transition-all duration-300 flex items-start gap-3 ${
+                  isDone
+                    ? 'bg-emerald-50/50 border-emerald-200 shadow-xs'
+                    : isActive
+                      ? 'bg-amber-50/70 border-amber-300 ring-2 ring-amber-400/20 shadow-sm'
+                      : 'bg-slate-50/60 border-slate-200/80 opacity-70'
+                }`}
+              >
+                {/* Status Indicator Icon / Right Mark */}
+                <div className="mt-0.5 shrink-0">
+                  {isDone ? (
+                    <div className="w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-sm">
+                      <Check size={14} strokeWidth={3} />
+                    </div>
+                  ) : isActive ? (
+                    <div className="w-6 h-6 rounded-full bg-amber-500 text-white flex items-center justify-center shadow-sm animate-spin">
+                      <RefreshCw size={12} strokeWidth={2.5} />
+                    </div>
+                  ) : (
+                    <div className="w-6 h-6 rounded-full bg-slate-200 text-slate-500 text-[11px] font-bold flex items-center justify-center">
+                      {step.id}
+                    </div>
+                  )}
+                </div>
+
+                {/* Step Content */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <h5 className={`text-xs font-bold tracking-tight truncate ${
+                      isDone ? 'text-emerald-950' : isActive ? 'text-amber-950' : 'text-slate-600'
+                    }`}>
+                      {step.id}. {step.title}
+                    </h5>
+                    <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full shrink-0 ${
+                      isDone
+                        ? 'bg-emerald-100/80 text-emerald-800'
+                        : isActive
+                          ? 'bg-amber-200/70 text-amber-800 animate-pulse'
+                          : 'bg-slate-200/70 text-slate-500'
+                    }`}>
+                      {step.badge}
+                    </span>
+                  </div>
+
+                  <p className={`text-[11px] mt-0.5 leading-relaxed truncate ${
+                    isDone ? 'text-emerald-800/80' : isActive ? 'text-amber-900/90 font-medium' : 'text-slate-400'
+                  }`}>
+                    {step.desc}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Action Link after 6/6 Completed */}
+        {completedCount === 6 && (
+          <div className="mt-2 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+            <span className="text-emerald-700 font-semibold flex items-center gap-1.5">
+              <CheckCircle2 size={16} className="text-emerald-600" />
+              <span>All 6 steps completed! Frames are active for <strong>/{targetSlug}</strong>.</span>
+            </span>
             <a
               href={`/${targetSlug}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] uppercase tracking-widest transition-colors flex items-center gap-1.5 shrink-0"
+              className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] uppercase tracking-wider transition-colors flex items-center gap-1"
             >
-              <span>Test Live View</span>
+              <span>Open Live View</span>
               <ArrowRight size={12} />
             </a>
           </div>
         )}
-
       </div>
 
-      {/* 2. Interactive Frame Scrubber Preview */}
+      {/* 3. Interactive Frame Scrubber Preview */}
       {activeFramesList.length > 0 && (
         <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex flex-col gap-4">
           <div className="flex items-center justify-between">

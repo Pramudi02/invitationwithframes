@@ -311,31 +311,56 @@ export default function FramedWeddingInvitation({ config, hasOpened }) {
   // Hero Portrait Image
   const heroImg = config?.heroImage || (gallery[0]?.src) || null;
   const sectionBackgrounds = config?.sectionBackgrounds || {};
+  const wholeBackground = config?.wholeBackground || config?.sectionBackgrounds?.whole || null;
+
   const getSectionBackgroundStyle = (sectionKey) => {
     const imageUrl = sectionBackgrounds[sectionKey];
-    if (!imageUrl) return undefined;
+    if (imageUrl) {
+      return {
+        backgroundImage: `url("${imageUrl}")`,
+        backgroundAttachment: 'fixed',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat',
+        backgroundSize: 'cover',
+        backgroundColor: 'transparent',
+      };
+    }
 
-    return {
-      backgroundImage: `url("${imageUrl}")`,
-      backgroundAttachment: 'fixed',
-      backgroundPosition: 'center',
-      backgroundRepeat: 'no-repeat',
-      backgroundSize: 'cover',
-      backgroundColor: 'transparent',
-    };
+    // When a whole background is set, let individual sections remain transparent
+    // so the stationary full-page background image shows through
+    if (wholeBackground) {
+      return {
+        backgroundColor: 'transparent',
+      };
+    }
+
+    return undefined;
   };
 
   return (
-    <div className="relative w-full overflow-x-clip font-sans text-[var(--colorTextDark)] bg-[var(--colorBg)] selection:bg-[var(--colorPrimary)]/20 selection:text-[var(--colorPrimary)]">
+    <div className={`relative w-full overflow-x-clip font-sans text-[var(--colorTextDark)] ${wholeBackground ? 'bg-transparent' : 'bg-[var(--colorBg)]'} selection:bg-[var(--colorPrimary)]/20 selection:text-[var(--colorPrimary)]`}>
       
-      {/* Background Decorative Floral / Pinstripe Texture */}
-      <div 
-        className="fixed inset-0 pointer-events-none opacity-40 z-0 bg-repeat"
-        style={{
-          backgroundImage: `radial-gradient(circle at 1px 1px, var(--colorPrimary) 0.75px, transparent 0)`,
-          backgroundSize: '36px 36px'
-        }}
-      />
+      {/* Whole Page Fixed Stationary Background Image (Clean, 100% original brightness with NO dark overlay) */}
+      {wholeBackground && (
+        <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
+          <img
+            src={wholeBackground}
+            alt="Whole Page Background"
+            className="w-full h-full object-cover object-center"
+          />
+        </div>
+      )}
+
+      {/* Background Decorative Floral / Pinstripe Texture (only shown when no wholeBackground) */}
+      {!wholeBackground && (
+        <div 
+          className="fixed inset-0 pointer-events-none opacity-40 z-0 bg-repeat"
+          style={{
+            backgroundImage: `radial-gradient(circle at 1px 1px, var(--colorPrimary) 0.75px, transparent 0)`,
+            backgroundSize: '36px 36px'
+          }}
+        />
+      )}
 
       {/* ========================================================
           0. CINEMATIC SCROLL HERO (FRAME-BY-FRAME MOTION VIDEO)
@@ -353,8 +378,10 @@ export default function FramedWeddingInvitation({ config, hasOpened }) {
         style={getSectionBackgroundStyle('hero')}
       >
         
-        {/* Subtle Ambient Radial Glow */}
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] sm:w-[550px] h-[300px] sm:h-[550px] rounded-full bg-[var(--colorPrimary)]/10 blur-[100px] pointer-events-none" />
+        {/* Subtle Ambient Radial Glow (only when no wholeBackground) */}
+        {!wholeBackground && (
+          <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] sm:w-[550px] h-[300px] sm:h-[550px] rounded-full bg-[var(--colorPrimary)]/10 blur-[100px] pointer-events-none" />
+        )}
 
         <div className="w-full max-w-4xl mx-auto text-center flex flex-col items-center">
           
@@ -1010,7 +1037,7 @@ export default function FramedWeddingInvitation({ config, hasOpened }) {
           8. MODERN ELEGANT FOOTER
           ======================================================== */}
       <footer
-        className="relative py-16 px-4 sm:px-6 border-t border-[var(--colorPrimary)]/20 bg-white/50 backdrop-blur-md z-10 text-center"
+        className={`relative py-16 px-4 sm:px-6 border-t border-[var(--colorPrimary)]/20 ${wholeBackground ? 'bg-transparent' : 'bg-white/50 backdrop-blur-md'} z-10 text-center`}
         style={getSectionBackgroundStyle('footer')}
       >
         <div className="max-w-xl mx-auto flex flex-col items-center">

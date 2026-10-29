@@ -40,7 +40,8 @@ export const getDefaultConfig = (slug) => ({
   heroImage: '',
   heroVideo: '',
   heroLayout: 1,
-  layoutSettings: {}, // Allows flexible dynamic JSON by layout ID
+  wholeBackground: '',
+  sectionBackgrounds: {},
   revealStyle: 'envelope', // 'envelope' | 'couple' | 'cover' | 'premium_envelope'
   theme: {
     colorPrimary: '#C9956A',
@@ -97,6 +98,7 @@ export const getDefaultConfig = (slug) => ({
     ogImage: ''
   },
   sectionBackgrounds: {
+    whole: '',
     hero: '',
     guestCard: '',
     story: '',

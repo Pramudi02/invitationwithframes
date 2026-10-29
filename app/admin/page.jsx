@@ -1025,6 +1025,11 @@ function AdminDashboard({ slug, onBack, showToast }) {
       if (data.success) {
         // Update config with new URL
         setPath(path, data.url);
+        if (path === 'wholeBackground') {
+          setPath('sectionBackgrounds.whole', data.url);
+        } else if (path === 'sectionBackgrounds.whole') {
+          setPath('wholeBackground', data.url);
+        }
 
         // These fields are used by the public invitation immediately after upload.
         // Persist them now so other devices do not depend on the admin form's
@@ -2904,32 +2909,65 @@ function AdminDashboard({ slug, onBack, showToast }) {
           )}
 
           {activeTab === 'backgrounds' && (
-            <SectionCard title="Section Backgrounds" icon={<LucideImage size={18} className="text-slate-400" />}>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {[
-                  { id: 'hero', label: 'Hero Background' },
-                  { id: 'guestCard', label: 'Guest Card Background' },
-                  { id: 'story', label: 'Story Background' },
-                  { id: 'events', label: 'Events Background' },
-                  { id: 'timeline', label: 'Timeline Background' },
-                  { id: 'gallery', label: 'Gallery Background' },
-                  { id: 'rsvp', label: 'RSVP Background' },
-                  { id: 'footer', label: 'Footer Background' }
-                ].map(sec => (
+            <div className="flex flex-col gap-6">
+              {/* Prominent New Input: Whole Background (Global Fixed Page Background) */}
+              <SectionCard title="Whole Background (Fixed Full-Page Background)" icon="🌟">
+                <div className="col-span-1 md:col-span-2">
+                  <div className="p-4 rounded-xl bg-amber-50/70 border border-amber-200/80 mb-4 text-xs text-amber-900 leading-relaxed">
+                    <strong>🌟 Fixed Full-Page Background:</strong> This background image stays stationary in the same place while the entire wedding invitation content scrolls over it. If individual section backgrounds below are also set, they will blend or override for that specific section.
+                  </div>
                   <ImageField
-                    key={sec.id}
-                    label={sec.label}
-                    hint="Full-width background image"
-                    value={config.sectionBackgrounds?.[sec.id]}
-                    path={`sectionBackgrounds.${sec.id}`}
+                    label="Whole Background Image"
+                    hint="Upload an image that remains locked in place across the entire invitation while content scrolls"
+                    value={config.wholeBackground || config.sectionBackgrounds?.whole}
+                    path="wholeBackground"
                     type="general"
-                    onUpload={handleUpload}
-                    onDelete={handleDeleteImage}
+                    onUpload={(file, path, type, urlVal) => {
+                      if (file) {
+                        handleUpload(file, 'wholeBackground', type);
+                      } else if (urlVal !== undefined) {
+                        setPath('wholeBackground', urlVal);
+                        setPath('sectionBackgrounds.whole', urlVal);
+                      }
+                    }}
+                    onDelete={(path, val) => {
+                      handleDeleteImage('wholeBackground', val);
+                      setPath('wholeBackground', '');
+                      setPath('sectionBackgrounds.whole', '');
+                    }}
                     onCrop={handleCropExisting}
                   />
-                ))}
-              </div>
-            </SectionCard>
+                </div>
+              </SectionCard>
+
+              {/* Keep Current All Section Backgrounds */}
+              <SectionCard title="Individual Section Backgrounds" icon={<LucideImage size={18} className="text-slate-400" />}>
+                <div className="col-span-1 md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {[
+                    { id: 'hero', label: 'Hero Background' },
+                    { id: 'guestCard', label: 'Guest Card Background' },
+                    { id: 'story', label: 'Story Background' },
+                    { id: 'events', label: 'Events Background' },
+                    { id: 'timeline', label: 'Timeline Background' },
+                    { id: 'gallery', label: 'Gallery Background' },
+                    { id: 'rsvp', label: 'RSVP Background' },
+                    { id: 'footer', label: 'Footer Background' }
+                  ].map(sec => (
+                    <ImageField
+                      key={sec.id}
+                      label={sec.label}
+                      hint="Optional specific background for this section"
+                      value={config.sectionBackgrounds?.[sec.id]}
+                      path={`sectionBackgrounds.${sec.id}`}
+                      type="general"
+                      onUpload={handleUpload}
+                      onDelete={handleDeleteImage}
+                      onCrop={handleCropExisting}
+                    />
+                  ))}
+                </div>
+              </SectionCard>
+            </div>
           )}
 
           {activeTab === 'replacements' && (

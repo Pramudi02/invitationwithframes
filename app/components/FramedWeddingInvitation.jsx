@@ -63,7 +63,7 @@ function FramedMonogram({ brideName = 'B', groomName = 'G', size = 'md' }) {
 // ==========================================
 function LuxuryFrame({ children, className = '', glow = false }) {
   return (
-    <div className={`relative p-5 sm:p-8 rounded-2xl bg-[var(--colorSurface)]/85 backdrop-blur-md border border-[var(--colorPrimary)]/30 ${glow ? 'shadow-[0_12px_45px_rgba(201,149,106,0.18)]' : 'shadow-[0_10px_35px_rgba(0,0,0,0.04)]'} ${className}`}>
+    <div className={`relative p-5 sm:p-8 rounded-2xl bg-[var(--colorSurface)]/70 backdrop-blur-md border border-[var(--colorPrimary)]/30 ${glow ? 'shadow-[0_12px_45px_rgba(201,149,106,0.18)]' : 'shadow-[0_10px_35px_rgba(0,0,0,0.04)]'} ${className}`}>
       {/* Corner Brackets */}
       <span className="absolute top-2 left-2 w-4 h-4 border-t-2 border-l-2 border-[var(--colorPrimary)]/70 pointer-events-none" />
       <span className="absolute top-2 right-2 w-4 h-4 border-t-2 border-r-2 border-[var(--colorPrimary)]/70 pointer-events-none" />
@@ -124,7 +124,7 @@ function FramedCountdown({ targetDateISO }) {
         {units.map((unit, idx) => (
           <div key={idx} className="relative group">
             {/* Framed Tile */}
-            <div className="relative overflow-hidden rounded-xl bg-white/70 backdrop-blur-md border border-[var(--colorPrimary)]/40 p-2.5 sm:p-4 text-center shadow-sm transition-all duration-300 hover:border-[var(--colorPrimary)]">
+            <div className="relative overflow-hidden rounded-xl bg-white/60 backdrop-blur-md border border-[var(--colorPrimary)]/40 p-2.5 sm:p-4 text-center shadow-sm transition-all duration-300 hover:border-[var(--colorPrimary)]">
               {/* Corner Notches */}
               <div className="absolute top-1 left-1 w-1 h-1 bg-[var(--colorPrimary)]/50 rounded-full" />
               <div className="absolute top-1 right-1 w-1 h-1 bg-[var(--colorPrimary)]/50 rounded-full" />
@@ -470,7 +470,7 @@ export default function FramedWeddingInvitation({ config, hasOpened }) {
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.6 }}
-            className="inline-flex items-center gap-3 sm:gap-6 px-6 sm:px-8 py-3 rounded-full border border-[var(--colorPrimary)]/30 bg-white/80 backdrop-blur-md shadow-sm mt-4"
+            className="inline-flex items-center gap-3 sm:gap-6 px-6 sm:px-8 py-3 rounded-full border border-[var(--colorPrimary)]/30 bg-white/70 backdrop-blur-md shadow-sm mt-4"
           >
             <div className="flex items-center gap-2 text-xs sm:text-sm font-semibold tracking-wider text-[var(--colorTextDark)]">
               <Calendar size={15} className="text-[var(--colorPrimary)]" />
@@ -662,7 +662,7 @@ export default function FramedWeddingInvitation({ config, hasOpened }) {
                   {/* Dress Code */}
                   {evt.dressCode && (
                     <div className="pl-7 mb-6">
-                      <span className="inline-block text-[11px] font-semibold tracking-wider text-[var(--colorTextDark)]/70 px-2.5 py-1 rounded-md bg-stone-100">
+                      <span className="inline-block text-[11px] font-semibold tracking-wider text-[var(--colorTextDark)]/80 px-2.5 py-1 rounded-md bg-[var(--colorPrimary)]/10 border border-[var(--colorPrimary)]/20">
                         👗 Dress Code: {evt.dressCode}
                       </span>
                     </div>
@@ -925,7 +925,7 @@ export default function FramedWeddingInvitation({ config, hasOpened }) {
                     value={rsvpForm.name}
                     onChange={(e) => setRsvpForm({ ...rsvpForm, name: e.target.value })}
                     placeholder="Enter your name"
-                    className="w-full px-4 py-3 rounded-xl border border-[var(--colorPrimary)]/30 focus:border-[var(--colorPrimary)] bg-white/90 outline-none font-serif text-sm text-[var(--colorTextDark)]"
+                    className="w-full px-4 py-3 rounded-xl border border-[var(--colorPrimary)]/30 focus:border-[var(--colorPrimary)] bg-white/75 backdrop-blur-sm focus:bg-white/90 outline-none font-serif text-sm text-[var(--colorTextDark)]"
                   />
                 </div>
 
@@ -964,7 +964,7 @@ export default function FramedWeddingInvitation({ config, hasOpened }) {
                     <select
                       value={rsvpForm.guests}
                       onChange={(e) => setRsvpForm({ ...rsvpForm, guests: Number(e.target.value) })}
-                      className="w-full px-4 py-3 rounded-xl border border-[var(--colorPrimary)]/30 focus:border-[var(--colorPrimary)] bg-white/90 outline-none font-serif text-sm text-[var(--colorTextDark)]"
+                      className="w-full px-4 py-3 rounded-xl border border-[var(--colorPrimary)]/30 focus:border-[var(--colorPrimary)] bg-white/75 backdrop-blur-sm focus:bg-white/90 outline-none font-serif text-sm text-[var(--colorTextDark)]"
                     >
                       {Array.from({ length: config?.rsvp?.maxGuests || 2 }, (_, i) => i + 1).map((num) => (
                         <option key={num} value={num}>
@@ -986,7 +986,7 @@ export default function FramedWeddingInvitation({ config, hasOpened }) {
                       value={rsvpForm.dietary}
                       onChange={(e) => setRsvpForm({ ...rsvpForm, dietary: e.target.value })}
                       placeholder="e.g. Vegetarian, Non-veg, Halal, Nut Allergy..."
-                      className="w-full px-4 py-3 rounded-xl border border-[var(--colorPrimary)]/30 focus:border-[var(--colorPrimary)] bg-white/90 outline-none font-serif text-sm text-[var(--colorTextDark)]"
+                      className="w-full px-4 py-3 rounded-xl border border-[var(--colorPrimary)]/30 focus:border-[var(--colorPrimary)] bg-white/75 backdrop-blur-sm focus:bg-white/90 outline-none font-serif text-sm text-[var(--colorTextDark)]"
                     />
                   </div>
                 )}
@@ -1001,7 +1001,7 @@ export default function FramedWeddingInvitation({ config, hasOpened }) {
                     value={rsvpForm.message}
                     onChange={(e) => setRsvpForm({ ...rsvpForm, message: e.target.value })}
                     placeholder="Send your warm blessings to the bride & groom..."
-                    className="w-full px-4 py-3 rounded-xl border border-[var(--colorPrimary)]/30 focus:border-[var(--colorPrimary)] bg-white/90 outline-none font-serif text-sm text-[var(--colorTextDark)]"
+                    className="w-full px-4 py-3 rounded-xl border border-[var(--colorPrimary)]/30 focus:border-[var(--colorPrimary)] bg-white/75 backdrop-blur-sm focus:bg-white/90 outline-none font-serif text-sm text-[var(--colorTextDark)]"
                   />
                 </div>
 

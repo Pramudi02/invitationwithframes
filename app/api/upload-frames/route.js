@@ -30,6 +30,7 @@ export async function POST(request) {
     }
 
     const frameList = [];
+    const timestamp = Date.now();
 
     // CASE 1: Direct frames uploaded (e.g. from client-side video extractor)
     if (directFrames && directFrames.length > 0) {
@@ -42,7 +43,7 @@ export async function POST(request) {
 
         const arrayBuffer = await frame.arrayBuffer();
         fs.writeFileSync(destPath, Buffer.from(arrayBuffer));
-        frameList.push(`/frames/${slug}/${filename}`);
+        frameList.push(`/frames/${slug}/${filename}?v=${timestamp}`);
       }
     } 
     // CASE 2: ZIP archive uploaded
@@ -81,7 +82,7 @@ export async function POST(request) {
 
         const content = await entry.zipEntry.async('nodebuffer');
         fs.writeFileSync(destPath, content);
-        frameList.push(`/frames/${slug}/${filename}`);
+        frameList.push(`/frames/${slug}/${filename}?v=${timestamp}`);
       }
     } else {
       return NextResponse.json({ success: false, error: 'No video frames or zip file provided' }, { status: 400 });
@@ -90,6 +91,7 @@ export async function POST(request) {
     // Write manifest.json
     const manifest = {
       slug,
+      version: timestamp,
       frameCount: frameList.length,
       frames: frameList,
       updatedAt: new Date().toISOString()
@@ -108,10 +110,12 @@ export async function POST(request) {
             $set: {
               cinematicFrames: {
                 enabled: true,
+                version: timestamp,
                 frameCount: frameList.length,
                 folder: `/frames/${slug}`,
                 frames: frameList,
-                poster: frameList[0] || ''
+                poster: frameList[0] || '',
+                updatedAt: new Date().toISOString()
               }
             }
           },
@@ -125,6 +129,7 @@ export async function POST(request) {
     return NextResponse.json({
       success: true,
       message: `Successfully saved ${frameList.length} customized frames for /${slug}!`,
+      version: timestamp,
       frameCount: frameList.length,
       frames: frameList,
       folder: `/frames/${slug}`

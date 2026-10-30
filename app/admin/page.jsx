@@ -3187,12 +3187,14 @@ function AdminDashboard({ slug, onBack, showToast }) {
                         <div className="relative aspect-[9/16] max-w-xs mx-auto overflow-hidden rounded-xl border border-[#C9956A]/40 bg-black shadow-md">
                           {config?.cinematicFrames?.frames?.[previewFrameIndex] ? (
                             <img
+                              key={`${config.cinematicFrames.frames[previewFrameIndex]}-${previewFrameIndex}`}
                               src={config.cinematicFrames.frames[previewFrameIndex]}
                               alt={`Frame ${previewFrameIndex + 1}`}
                               className="w-full h-full object-cover"
                             />
                           ) : (
                             <img
+                              key={`fallback-${slug || 'wedding'}-${previewFrameIndex}`}
                               src={`/frames/${slug || config?.slug || 'wedding'}/frame-${String(previewFrameIndex + 1).padStart(4, '0')}.webp`}
                               alt={`Frame ${previewFrameIndex + 1}`}
                               className="w-full h-full object-cover"

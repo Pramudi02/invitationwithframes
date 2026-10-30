@@ -1,6 +1,6 @@
 {
   "slug": "rashini-sanjula",
-  "frameCount": 24,
+  "frameCount": 12,
   "frames": [
     "/frames/rashini-sanjula/frame-0001.webp",
     "/frames/rashini-sanjula/frame-0002.webp",
@@ -13,19 +13,7 @@
     "/frames/rashini-sanjula/frame-0009.webp",
     "/frames/rashini-sanjula/frame-0010.webp",
     "/frames/rashini-sanjula/frame-0011.webp",
-    "/frames/rashini-sanjula/frame-0012.webp",
-    "/frames/rashini-sanjula/frame-0013.webp",
-    "/frames/rashini-sanjula/frame-0014.webp",
-    "/frames/rashini-sanjula/frame-0015.webp",
-    "/frames/rashini-sanjula/frame-0016.webp",
-    "/frames/rashini-sanjula/frame-0017.webp",
-    "/frames/rashini-sanjula/frame-0018.webp",
-    "/frames/rashini-sanjula/frame-0019.webp",
-    "/frames/rashini-sanjula/frame-0020.webp",
-    "/frames/rashini-sanjula/frame-0021.webp",
-    "/frames/rashini-sanjula/frame-0022.webp",
-    "/frames/rashini-sanjula/frame-0023.webp",
-    "/frames/rashini-sanjula/frame-0024.webp"
+    "/frames/rashini-sanjula/frame-0012.webp"
   ],
-  "updatedAt": "2026-10-28T20:53:43.282Z"
+  "updatedAt": "2026-10-29T05:39:00.653Z"
 }

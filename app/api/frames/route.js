@@ -24,10 +24,27 @@ export async function GET(request) {
     if (slug) {
       const slugDir = path.join(framesBaseDir, slug);
       if (fs.existsSync(slugDir)) {
+        // Prefer manifest.json if exists
+        const manifestPath = path.join(slugDir, 'manifest.json');
+        if (fs.existsSync(manifestPath)) {
+          try {
+            const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+            if (Array.isArray(manifest.frames) && manifest.frames.length > 0) {
+              return NextResponse.json({
+                success: true,
+                folder: `/frames/${slug}`,
+                frameCount: manifest.frames.length,
+                frames: manifest.frames
+              });
+            }
+          } catch (e) {}
+        }
+
         const files = fs.readdirSync(slugDir).filter(f => imageRegex.test(f));
         if (files.length > 0) {
           files.sort(naturalSort);
-          const frames = files.map(f => `/frames/${slug}/${f}`);
+          const mtime = Math.floor(fs.statSync(path.join(slugDir, files[0])).mtimeMs);
+          const frames = files.map(f => `/frames/${slug}/${f}?v=${mtime}`);
           return NextResponse.json({
             success: true,
             folder: `/frames/${slug}`,

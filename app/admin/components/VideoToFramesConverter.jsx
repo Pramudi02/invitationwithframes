@@ -63,7 +63,13 @@ export default function VideoToFramesConverter({
     setResultSummary(null);
     setExtractedThumbnails([]);
     setCurrentFramePreview(null);
+    setPreviewIndex(0);
     setCurrentStep('video_ready');
+
+    // Reset file input value so re-selecting same or new file always triggers onChange
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
 
     // Read video metadata
     const tempVideo = document.createElement('video');
@@ -77,6 +83,24 @@ export default function VideoToFramesConverter({
         sizeMb: Math.round((file.size / (1024 * 1024)) * 10) / 10
       });
     };
+    tempVideo.load();
+  };
+
+  const handleResetVideo = () => {
+    if (videoPreviewUrl) {
+      URL.revokeObjectURL(videoPreviewUrl);
+    }
+    setSelectedFile(null);
+    setVideoPreviewUrl(null);
+    setResultSummary(null);
+    setExtractedThumbnails([]);
+    setCurrentFramePreview(null);
+    setPreviewIndex(0);
+    setCurrentStep('idle');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+      fileInputRef.current.click();
+    }
   };
 
   // Run the Frame Extraction and WebP Compression Pipeline
@@ -90,7 +114,7 @@ export default function VideoToFramesConverter({
     setResultSummary(null);
     setExtractedThumbnails([]);
     setCurrentStep('dividing_frames');
-    setProgress({ current: 0, total: targetFrameCount, percent: 0, statusText: 'Initializing video decoder...' });
+    setProgress({ current: 0, total: targetFrameCount, percent: 0, statusText: 'Initializing hardware-accelerated video decoder...' });
 
     try {
       const video = document.createElement('video');
@@ -100,8 +124,19 @@ export default function VideoToFramesConverter({
       video.src = videoPreviewUrl;
 
       await new Promise((resolve, reject) => {
-        video.onloadedmetadata = () => resolve();
-        video.onerror = () => reject(new Error('Failed to load video into decoding engine.'));
+        const timer = setTimeout(() => {
+          if (video.duration && !isNaN(video.duration)) resolve();
+          else reject(new Error('Video loading timed out. Please try another video format.'));
+        }, 12000);
+        video.onloadedmetadata = () => {
+          clearTimeout(timer);
+          resolve();
+        };
+        video.onerror = () => {
+          clearTimeout(timer);
+          reject(new Error('Failed to load video into decoding engine.'));
+        };
+        video.load();
       });
 
       const duration = video.duration;
@@ -140,12 +175,18 @@ export default function VideoToFramesConverter({
           setCurrentStep('compressing_webp');
         }
 
-        // Seek video to exact timestamp
+        // Seek video to exact timestamp with safety fallback
         await new Promise((resSeek) => {
+          let timeoutId;
           const onSeeked = () => {
+            clearTimeout(timeoutId);
             video.removeEventListener('seeked', onSeeked);
             resSeek();
           };
+          timeoutId = setTimeout(() => {
+            video.removeEventListener('seeked', onSeeked);
+            resSeek();
+          }, 600);
           video.addEventListener('seeked', onSeeked);
           video.currentTime = targetTime;
         });
@@ -260,7 +301,7 @@ export default function VideoToFramesConverter({
     };
   }, [videoPreviewUrl]);
 
-  const activeFramesList = resultSummary?.frames || existingFrames || [];
+  const activeFramesList = resultSummary?.frames || (!selectedFile ? existingFrames : []) || [];
 
   // ========================================================
   // CHECKLIST TO-DO ITEMS DEFINITION WITH RIGHT MARKS (✓)
@@ -412,9 +453,19 @@ export default function VideoToFramesConverter({
           </label>
         ) : (
           <div className="flex flex-col md:flex-row gap-5 p-4 rounded-xl border border-slate-200 bg-slate-50/60">
+            {/* Hidden file input when file is already selected so user can switch files anytime */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="video/mp4,video/webm,video/quicktime,video/*"
+              className="hidden"
+              onChange={handleFileChange}
+            />
+
             {/* Video Player */}
             <div className="w-full md:w-56 aspect-[9/16] md:aspect-[3/4] bg-black rounded-xl overflow-hidden relative shadow-md shrink-0">
               <video
+                key={videoPreviewUrl}
                 src={videoPreviewUrl}
                 className="w-full h-full object-contain"
                 controls
@@ -430,17 +481,28 @@ export default function VideoToFramesConverter({
                   <span className="text-xs font-bold text-slate-700 truncate max-w-xs">
                     {selectedFile.name}
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedFile(null);
-                      setVideoPreviewUrl(null);
-                      setCurrentStep('idle');
-                    }}
-                    className="text-[11px] text-rose-500 hover:underline font-semibold"
-                  >
-                    Change Video
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleResetVideo}
+                      className="px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-[11px] text-slate-700 font-semibold transition-colors flex items-center gap-1 shadow-xs"
+                    >
+                      <Upload size={12} />
+                      <span>Choose Different Video</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl);
+                        setSelectedFile(null);
+                        setVideoPreviewUrl(null);
+                        setCurrentStep(existingFrames?.length > 0 ? 'completed' : 'idle');
+                      }}
+                      className="text-[11px] text-rose-500 hover:underline font-semibold"
+                    >
+                      Remove
+                    </button>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-3 gap-2 p-2.5 rounded-lg bg-white border border-slate-200 text-center mb-4">
@@ -676,23 +738,60 @@ export default function VideoToFramesConverter({
 
         {/* Action Link after 6/6 Completed */}
         {completedCount === 6 && (
-          <div className="mt-2 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+          <div className="mt-2 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs">
             <span className="text-emerald-700 font-semibold flex items-center gap-1.5">
               <CheckCircle2 size={16} className="text-emerald-600" />
               <span>All 6 steps completed! Frames are active for <strong>/{targetSlug}</strong>.</span>
             </span>
-            <a
-              href={`/${targetSlug}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] uppercase tracking-wider transition-colors flex items-center gap-1"
-            >
-              <span>Open Live View</span>
-              <ArrowRight size={12} />
-            </a>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleResetVideo}
+                className="px-3.5 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold text-[10px] uppercase tracking-wider transition-colors flex items-center gap-1.5 shadow-xs"
+              >
+                <RefreshCw size={12} />
+                <span>Upload Another Video</span>
+              </button>
+              <a
+                href={`/${targetSlug}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] uppercase tracking-wider transition-colors flex items-center gap-1"
+              >
+                <span>Open Live View</span>
+                <ArrowRight size={12} />
+              </a>
+            </div>
           </div>
         )}
       </div>
+
+      {/* Banner when a new video is loaded but not yet converted */}
+      {selectedFile && !resultSummary && (
+        <div className="bg-amber-50/90 border border-amber-300 rounded-2xl p-5 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <span className="p-2.5 rounded-xl bg-amber-500 text-white shadow-sm shrink-0">
+              <Film size={20} />
+            </span>
+            <div>
+              <p className="text-xs font-bold text-amber-950">
+                New Video Loaded: {selectedFile.name}
+              </p>
+              <p className="text-[11px] text-amber-800 mt-0.5">
+                Click &quot;Convert Video to Compressed WebP Frames&quot; above to process this video into sequential frames.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleStartConversion}
+            disabled={isProcessing}
+            className="px-4 py-2 bg-[#C9956A] hover:bg-[#b5845a] text-white text-xs font-bold uppercase tracking-wider rounded-xl shadow-md transition-all shrink-0"
+          >
+            Start Conversion
+          </button>
+        </div>
+      )}
 
       {/* 3. Interactive Frame Scrubber Preview */}
       {activeFramesList.length > 0 && (
@@ -725,6 +824,7 @@ export default function VideoToFramesConverter({
           <div className="relative aspect-[9/16] max-w-xs mx-auto overflow-hidden rounded-xl border border-[#C9956A]/40 bg-black shadow-lg">
             {activeFramesList[previewIndex] ? (
               <img
+                key={`${activeFramesList[previewIndex]}-${previewIndex}`}
                 src={activeFramesList[previewIndex]}
                 alt={`Preview frame ${previewIndex + 1}`}
                 className="w-full h-full object-contain"

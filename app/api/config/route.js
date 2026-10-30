@@ -35,8 +35,9 @@ function getAllImagesFromConfig(config) {
 
 /**
  * Compares two config objects and deletes images that were present in old but missing/changed in new.
+ * Uses slug exclusion to ensure assets shared with other invitations are never deleted.
  */
-async function cleanupReplacedImages(oldConfig, newPayload) {
+async function cleanupReplacedImages(oldConfig, newPayload, slug = null) {
   const oldImages = getAllImagesFromConfig(oldConfig);
   const newImages = getAllImagesFromConfig(newPayload);
 
@@ -44,7 +45,7 @@ async function cleanupReplacedImages(oldConfig, newPayload) {
   const replaced = oldImages.filter(url => !newImages.includes(url));
   
   for (const url of replaced) {
-    await deleteFromCloudinary(url);
+    await deleteFromCloudinary(url, slug);
   }
 }
 
@@ -174,6 +175,38 @@ export async function POST(request) {
         createdAt: new Date().toISOString()
       };
 
+      // Clone cinematic frames folder on disk if present
+      try {
+        const fs = await import('fs');
+        const path = await import('path');
+        const sourceFramesDir = path.join(process.cwd(), 'public', 'frames', duplicateFrom);
+        const targetFramesDir = path.join(process.cwd(), 'public', 'frames', slug);
+        if (fs.existsSync(sourceFramesDir)) {
+          if (!fs.existsSync(targetFramesDir)) {
+            fs.mkdirSync(targetFramesDir, { recursive: true });
+          }
+          fs.cpSync(sourceFramesDir, targetFramesDir, { recursive: true });
+        }
+      } catch (framesErr) {
+        console.warn(`[api/config] Failed to duplicate frames directory:`, framesErr.message);
+      }
+
+      // Update cinematicFrames URLs to point to the new slug's folder
+      if (newConfig.cinematicFrames) {
+        newConfig.cinematicFrames = {
+          ...newConfig.cinematicFrames,
+          folder: `/frames/${slug}`,
+          poster: typeof newConfig.cinematicFrames.poster === 'string'
+            ? newConfig.cinematicFrames.poster.replaceAll(`/frames/${duplicateFrom}/`, `/frames/${slug}/`)
+            : newConfig.cinematicFrames.poster,
+          frames: Array.isArray(newConfig.cinematicFrames.frames)
+            ? newConfig.cinematicFrames.frames.map(f =>
+                typeof f === 'string' ? f.replaceAll(`/frames/${duplicateFrom}/`, `/frames/${slug}/`) : f
+              )
+            : []
+        };
+      }
+
       // Also clone event_meta, birthdays, general, label_overrides if they exist
       const [sourceMeta, sourceBd, sourceGen, sourceLo] = await Promise.all([
         db.collection('event_meta').findOne({ slug: duplicateFrom }),
@@ -276,8 +309,8 @@ export async function PUT(request) {
       return NextResponse.json({ success: false, error: 'Invitation not found' }, { status: 404 });
     }
 
-    // compare and purge replaced Cloudinary assets
-    await cleanupReplacedImages(oldDoc, reqBody);
+    // compare and purge replaced Cloudinary assets (safely checking if shared with other invitations)
+    await cleanupReplacedImages(oldDoc, reqBody, slug);
 
     // Example logic to ensure they are saved:
     const updateData = {
@@ -328,12 +361,25 @@ export async function DELETE(request) {
       return NextResponse.json({ success: false, error: 'Invitation not found' }, { status: 404 });
     }
 
-    // 2. Extract and delete all Cloudinary images
+    // 2. Extract and delete all Cloudinary images (skips deletion if shared with another invitation)
     const images = getAllImagesFromConfig(doc);
-    console.log(`[api/config] Purging ${images.length} images for slug: ${slug}`);
+    console.log(`[api/config] Safe purging ${images.length} images for slug: ${slug}`);
     
-    // Run deletions in parallel
-    await Promise.all(images.map(url => deleteFromCloudinary(url)));
+    // Run safe deletions in parallel
+    await Promise.all(images.map(url => deleteFromCloudinary(url, slug)));
+
+    // 2b. Clean up cinematic frames folder on disk if present
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
+      const framesDir = path.join(process.cwd(), 'public', 'frames', slug);
+      if (fs.existsSync(framesDir)) {
+        fs.rmSync(framesDir, { recursive: true, force: true });
+        console.log(`[api/config] Cleaned up frames folder: ${framesDir}`);
+      }
+    } catch (diskErr) {
+      console.warn(`[api/config] Could not clean frames on disk:`, diskErr.message);
+    }
 
     // 3. Delete from MongoDB
     const result = await db.collection('settings').deleteOne(query);

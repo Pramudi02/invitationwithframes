@@ -30,15 +30,16 @@ export async function POST(req) {
     const file = formData.get('file');
     const type = formData.get('type') || 'general';
     const oldImage = formData.get('oldImage'); // URL of the image being replaced
+    const slug = formData.get('slug');
 
     if (!file) {
       return NextResponse.json({ success: false, error: 'No file uploaded' }, { status: 400 });
     }
 
-    // ── Delete old image/video/audio from Cloudinary BEFORE uploading new one ───
+    // ── Delete old image/video/audio from Cloudinary BEFORE uploading new one (only if not used by another invitation) ───
     if (oldImage) {
       const { deleteFromCloudinary } = await import('@/lib/cloudinary');
-      await deleteFromCloudinary(oldImage);
+      await deleteFromCloudinary(oldImage, slug);
     }
 
     const bytes = await file.arrayBuffer();
@@ -79,14 +80,14 @@ export async function DELETE(req) {
 
   try {
     const body = await req.json();
-    const { fileUrl } = body;
+    const { fileUrl, slug } = body;
 
     if (!fileUrl) {
       return NextResponse.json({ success: false, error: 'No file URL provided' }, { status: 400 });
     }
 
     const { deleteFromCloudinary } = await import('@/lib/cloudinary');
-    await deleteFromCloudinary(fileUrl);
+    await deleteFromCloudinary(fileUrl, slug);
     
     return NextResponse.json({ success: true, message: 'Image deleted from Cloudinary.' });
   } catch (err) {

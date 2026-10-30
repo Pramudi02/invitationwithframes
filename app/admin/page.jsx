@@ -1152,6 +1152,10 @@ function AdminDashboard({ slug, onBack, showToast }) {
     if (oldImage) {
       formData.append('oldImage', oldImage);
     }
+    const activeSlug = slug || config?.slug;
+    if (activeSlug) {
+      formData.append('slug', activeSlug);
+    }
 
     setLoading(true);
     showToast('success', 'Uploading to server...');
@@ -1464,10 +1468,11 @@ function AdminDashboard({ slug, onBack, showToast }) {
 
     try {
       setLoading(true);
+      const activeSlug = slug || config?.slug;
       const res = await fetch('/api/upload', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileUrl: url }),
+        body: JSON.stringify({ fileUrl: url, slug: activeSlug }),
       });
       const data = await res.json();
 

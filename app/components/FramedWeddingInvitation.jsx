@@ -6,7 +6,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Calendar, Clock, MapPin, Heart, Music, Volume2, VolumeX,
   ChevronDown, Send, CheckCircle2, Navigation, Sparkles,
-  ChevronLeft, ChevronRight, X, ArrowUp, UserCheck, Utensils
+  ChevronLeft, ChevronRight, X, ArrowUp, UserCheck, Utensils,
+  ExternalLink, Check
 } from 'lucide-react';
 import CinematicScrollHero from './CinematicScrollHero';
 
@@ -156,7 +157,7 @@ function FramedCountdown({ targetDateISO }) {
 export default function FramedWeddingInvitation({ config, hasOpened }) {
   const searchParams = useSearchParams();
 
-  // Dynamic Personalized Guest Name from URL (?guest=Name or ?to=Name)
+  // Dynamic Personalized Guest Name and Pax from URL (?guest=Name&pax=2 or ?to=Name)
   const guestName = useMemo(() => {
     const raw = searchParams.get('guest') || searchParams.get('to') || '';
     if (!raw) return '';
@@ -167,26 +168,116 @@ export default function FramedWeddingInvitation({ config, hasOpened }) {
     }
   }, [searchParams]);
 
+  const urlPax = useMemo(() => {
+    const raw = searchParams.get('pax');
+    if (!raw) return null;
+    const n = parseInt(raw, 10);
+    return (!isNaN(n) && n > 0) ? n : null;
+  }, [searchParams]);
+
   // Gallery Lightbox State
   const [activePhotoIndex, setActivePhotoIndex] = useState(null);
 
-  // RSVP Form State
-  const [rsvpForm, setRsvpForm] = useState({
-    name: guestName || '',
-    attending: 'Joyfully Accept',
-    guests: 1,
-    dietary: '',
-    message: ''
+  // Selected Map Event Index for Location Map Box
+  const [selectedMapEventIndex, setSelectedMapEventIndex] = useState(0);
+
+  // Dynamic RSVP Form Builder Fields (Resolves from Admin's RSVP Form Builder Layout 1)
+  const currentLayout = config?.heroLayout || 1;
+  const layoutSpecificFields = config?.layoutSettings?.layout_1?.rsvpFields 
+    || config?.layoutSettings?.[`layout_${currentLayout}`]?.rsvpFields;
+  const globalFields = config?.rsvp?.fields;
+
+  const defaultRsvpFields = useMemo(() => [
+    { id: "guestName", type: "text", label: "Your Full Name", placeholder: "Enter your full name", required: true, isCore: true },
+    { id: "attending", type: "button-group", label: "Will you attend?", options: "Joyfully Accept,Regretfully Decline", required: true, isCore: true },
+    { id: "guestCount", type: "guest-count", label: "Number of Guests Attending", placeholder: "1", required: true },
+    { id: "dietary", type: "text", label: "Dietary Requirements / Preferences", placeholder: "e.g. Vegetarian, Non-veg, Halal, Nut Allergy...", required: false },
+    { id: "message", type: "textarea", label: "Wishes for the Couple", placeholder: "Send your warm blessings to the bride & groom...", required: false }
+  ], []);
+
+  const fieldsToRender = useMemo(() => {
+    if (layoutSpecificFields && layoutSpecificFields.length > 0) return layoutSpecificFields;
+    if (globalFields && globalFields.length > 0) return globalFields;
+    return defaultRsvpFields;
+  }, [layoutSpecificFields, globalFields, defaultRsvpFields]);
+
+  // RSVP Dynamic Form State
+  const [formData, setFormData] = useState(() => {
+    const initial = {};
+    if (guestName) {
+      initial.guestName = guestName;
+      initial.name = guestName;
+    }
+    const attendingField = fieldsToRender.find(f => f.id === 'attending');
+    if (attendingField?.options) {
+      const firstOpt = attendingField.options.split(',')[0]?.trim();
+      if (firstOpt) initial.attending = firstOpt;
+    }
+    const guestCountField = fieldsToRender.find(f => f.type === 'guest-count' || f.id === 'guests' || f.id === 'guestCount');
+    if (guestCountField) {
+      initial[guestCountField.id] = urlPax ? Math.min(urlPax, 1) : 1;
+    }
+    return initial;
   });
+  const [formErrors, setFormErrors] = useState({});
   const [rsvpSubmitted, setRsvpSubmitted] = useState(false);
   const [rsvpLoading, setRsvpLoading] = useState(false);
 
-  // Update guest name when URL parameter arrives
+  // Sync guest name when URL parameter arrives
   useEffect(() => {
-    if (guestName && !rsvpForm.name) {
-      setRsvpForm(prev => ({ ...prev, name: guestName }));
+    if (guestName) {
+      setFormData(prev => ({
+        ...prev,
+        guestName: prev.guestName || guestName,
+        name: prev.name || guestName
+      }));
     }
   }, [guestName]);
+
+  // Attendance Status to determine if subsequent conditional fields show
+  const attendingField = useMemo(() => fieldsToRender.find(f => f.id === 'attending'), [fieldsToRender]);
+  const acceptOption = useMemo(() => attendingField?.options?.split(',')[0]?.trim()?.toLowerCase() || 'accept', [attendingField]);
+  const userAttendingStatus = (formData['attending'] || '').toLowerCase();
+  const isAttending = useMemo(() => {
+    if (!attendingField) return true;
+    return userAttendingStatus.includes(acceptOption) || userAttendingStatus.includes('accept') || userAttendingStatus.includes('yes');
+  }, [attendingField, acceptOption, userAttendingStatus]);
+
+  // Handle dynamic field value changes
+  const handleFieldChange = (fieldId, value) => {
+    setFormData(prev => {
+      const next = { ...prev, [fieldId]: value };
+      if (fieldId === 'guestName') next.name = value;
+      if (fieldId === 'name') next.guestName = value;
+      return next;
+    });
+    if (formErrors[fieldId]) {
+      setFormErrors(prev => {
+        const next = { ...prev };
+        delete next[fieldId];
+        return next;
+      });
+    }
+  };
+
+  // Validate only visible fields
+  const validateForm = () => {
+    const errs = {};
+    fieldsToRender.forEach(field => {
+      const isCore = field.id === 'guestName' || field.id === 'name' || field.id === 'attending';
+      const isVisible = isCore || isAttending || field.type === 'textarea';
+      if (!isVisible) return;
+
+      if (field.required) {
+        const val = formData[field.id];
+        if (val === undefined || val === null || String(val).trim() === '') {
+          errs[field.id] = `${field.label || 'This field'} is required`;
+        }
+      }
+    });
+    setFormErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
 
   // Keyboard controls for gallery lightbox
   useEffect(() => {
@@ -220,18 +311,27 @@ export default function FramedWeddingInvitation({ config, hasOpened }) {
     window.open(gCalUrl, '_blank');
   };
 
-  // Handle WhatsApp RSVP
+  // Handle WhatsApp RSVP with Dynamic Fields
   const handleWhatsAppRSVP = (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
+    if (!validateForm()) return;
+
     const cleanNumber = (config?.rsvp?.whatsappNumber || '').replace(/[+\s-]/g, '').replace(/^0+/, '');
     const coupleName = config?.couple?.displayNames || 'the happy couple';
-    
+
+    const visibleFields = fieldsToRender.filter(field => {
+      const isCore = field.id === 'guestName' || field.id === 'name' || field.id === 'attending';
+      return isCore || isAttending || field.type === 'textarea';
+    });
+
+    const fieldsText = visibleFields.map(field => {
+      const val = formData[field.id];
+      return `• *${field.label}:* ${val !== undefined && val !== null && String(val).trim() !== '' ? val : 'Not provided'}`;
+    }).join('\n');
+
     const text = `💍 *Wedding Invitation RSVP for ${coupleName}* 💍\n\n` +
-      `👤 *Guest Name:* ${rsvpForm.name || 'Guest'}\n` +
-      `💌 *Attendance:* ${rsvpForm.attending}\n` +
-      `👥 *Number of Guests:* ${rsvpForm.guests}\n` +
-      (rsvpForm.dietary ? `🍽️ *Dietary Preferences:* ${rsvpForm.dietary}\n` : '') +
-      (rsvpForm.message ? `💬 *Wishes:* "${rsvpForm.message}"\n` : '');
+      `${fieldsText}\n\n` +
+      `Warm regards,\n${formData.guestName || formData.name || 'Guest'}`;
 
     const waUrl = cleanNumber 
       ? `https://wa.me/${cleanNumber}?text=${encodeURIComponent(text)}`
@@ -241,19 +341,30 @@ export default function FramedWeddingInvitation({ config, hasOpened }) {
     setRsvpSubmitted(true);
   };
 
-  // Handle Online Form RSVP Submission
+  // Handle Online Form RSVP Submission with Dynamic Fields
   const handleDirectRSVP = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
+    if (!validateForm()) return;
+
     setRsvpLoading(true);
 
     try {
+      const visibleFields = fieldsToRender.filter(field => {
+        const isCore = field.id === 'guestName' || field.id === 'name' || field.id === 'attending';
+        return isCore || isAttending || field.type === 'textarea';
+      });
+
+      const submitData = {};
+      visibleFields.forEach(field => {
+        submitData[field.label] = formData[field.id] !== undefined ? formData[field.id] : 'Not provided';
+      });
+
       const payload = {
         slug: config?.slug || 'wedding',
-        guestName: rsvpForm.name,
-        attending: rsvpForm.attending,
-        guestCount: rsvpForm.guests,
-        dietary: rsvpForm.dietary,
-        message: rsvpForm.message,
+        guestName: formData.guestName || formData.name || 'Guest',
+        attending: formData.attending || '',
+        ...formData,
+        ...submitData,
         googleSheetUrl: config?.rsvp?.googleSheetUrl || ''
       };
 
@@ -301,6 +412,33 @@ export default function FramedWeddingInvitation({ config, hasOpened }) {
   if (Array.isArray(config?.extraEvents)) {
     allEvents.push(...config.extraEvents);
   }
+
+  // Active Map Event & Query for Location Map Box
+  const activeMapEvent = allEvents[selectedMapEventIndex] || allEvents[0] || null;
+
+  const mapLocationQuery = useMemo(() => {
+    if (!activeMapEvent) {
+      return config?.wedding?.venue || config?.events?.ceremony?.venueName || 'Colombo, Sri Lanka';
+    }
+    const parts = [];
+    if (activeMapEvent.venueName) parts.push(activeMapEvent.venueName);
+    if (activeMapEvent.address) parts.push(activeMapEvent.address);
+    return parts.join(', ') || config?.wedding?.venue || config?.events?.ceremony?.venueName || 'Colombo, Sri Lanka';
+  }, [activeMapEvent, config]);
+
+  const mapEmbedUrl = useMemo(() => {
+    if (!mapLocationQuery) return '';
+    return `https://maps.google.com/maps?q=${encodeURIComponent(mapLocationQuery)}&t=&z=15&ie=UTF8&iwloc=&output=embed`;
+  }, [mapLocationQuery]);
+
+  const mapDirectionsUrl = useMemo(() => {
+    if (activeMapEvent?.mapsUrl) return activeMapEvent.mapsUrl;
+    return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(mapLocationQuery)}`;
+  }, [activeMapEvent, mapLocationQuery]);
+
+  const googleMapsSearchUrl = useMemo(() => {
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapLocationQuery)}`;
+  }, [mapLocationQuery]);
 
   // Gallery Array
   const gallery = Array.isArray(config?.gallery) ? config.gallery : [];
@@ -692,6 +830,102 @@ export default function FramedWeddingInvitation({ config, hasOpened }) {
             ))}
           </div>
 
+          {/* ========================================================
+              INTERACTIVE VENUE MAP BOX
+              ======================================================== */}
+          {mapLocationQuery && (
+            <div id="location-map" className="mt-10 sm:mt-12">
+              <LuxuryFrame glow={true} className="p-5 sm:p-8">
+                
+                {/* Header */}
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 pb-5 border-b border-[var(--colorPrimary)]/20">
+                  <div>
+                    <div className="flex items-center gap-1.5 text-[10px] sm:text-xs font-bold tracking-[0.2em] uppercase text-[var(--colorPrimary)] mb-1">
+                      <MapPin size={15} />
+                      <span>Venue Location & Map</span>
+                    </div>
+                    <h3 className="font-serif text-2xl sm:text-3xl font-bold text-[var(--colorTextDark)]">
+                      {activeMapEvent?.title || activeMapEvent?.defaultType || 'Venue Location'}
+                    </h3>
+                    {(activeMapEvent?.venueName || activeMapEvent?.address) && (
+                      <p className="font-serif text-xs sm:text-sm text-[var(--colorTextLight)] mt-1">
+                        {activeMapEvent?.venueName && (
+                          <span className="font-semibold text-[var(--colorTextDark)]">{activeMapEvent.venueName}</span>
+                        )}
+                        {activeMapEvent?.venueName && activeMapEvent?.address ? ' • ' : ''}
+                        {activeMapEvent?.address}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Switcher Tabs if multiple events exist */}
+                  {allEvents.length > 1 && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      {allEvents.map((evt, idx) => {
+                        const isSelected = selectedMapEventIndex === idx;
+                        return (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => setSelectedMapEventIndex(idx)}
+                            className={`px-3.5 py-1.5 rounded-full text-xs font-serif font-semibold transition-all duration-300 ${
+                              isSelected
+                                ? 'bg-[var(--colorPrimary)] text-white shadow-md scale-105'
+                                : 'bg-white/60 text-[var(--colorTextDark)]/70 hover:bg-white border border-[var(--colorPrimary)]/25'
+                            }`}
+                          >
+                            {evt.title || evt.defaultType || `Venue ${idx + 1}`}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Google Map Embedded Frame */}
+                <div className="relative overflow-hidden rounded-xl border border-[var(--colorPrimary)]/30 shadow-inner bg-slate-100 h-[280px] sm:h-[380px] w-full">
+                  <iframe
+                    title="Event Location Google Map"
+                    src={mapEmbedUrl}
+                    className="w-full h-full border-0"
+                    loading="lazy"
+                    allowFullScreen
+                    referrerPolicy="no-referrer-when-downgrade"
+                  />
+                </div>
+
+                {/* Map Action Links */}
+                <div className="mt-5 pt-4 border-t border-[var(--colorPrimary)]/15 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <span className="text-xs font-serif italic text-[var(--colorTextLight)]">
+                    Easily navigate to {activeMapEvent?.venueName || 'the venue'} via Google Maps
+                  </span>
+                  <div className="flex items-center gap-2.5 w-full sm:w-auto">
+                    <a
+                      href={mapDirectionsUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-1 sm:flex-initial px-5 py-2.5 rounded-full bg-[var(--colorPrimary)] text-white text-xs font-bold tracking-wider uppercase flex items-center justify-center gap-2 shadow-[0_4px_15px_rgba(201,149,106,0.25)] hover:scale-105 active:scale-95 transition-all"
+                    >
+                      <Navigation size={14} />
+                      <span>Get Directions</span>
+                    </a>
+
+                    <a
+                      href={googleMapsSearchUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-4 py-2.5 rounded-full bg-white/70 hover:bg-white border border-[var(--colorPrimary)]/30 text-[var(--colorTextDark)] text-xs font-semibold tracking-wider uppercase flex items-center justify-center gap-1.5 transition-all"
+                    >
+                      <ExternalLink size={13} />
+                      <span>Open in Maps</span>
+                    </a>
+                  </div>
+                </div>
+
+              </LuxuryFrame>
+            </div>
+          )}
+
         </div>
       </section>
 
@@ -866,172 +1100,276 @@ export default function FramedWeddingInvitation({ config, hasOpened }) {
       {/* ========================================================
           7. RSVP SECTION ("SAVE YOUR SEAT")
           ======================================================== */}
-      <section
-        id="rsvp-section"
-        className="relative py-20 px-4 sm:px-6 z-10"
-        style={getSectionBackgroundStyle('rsvp')}
-      >
-        <div className="max-w-2xl mx-auto">
-          
-          <div className="text-center mb-10">
-            <span className="font-sans text-[10px] sm:text-xs font-bold tracking-[0.25em] text-[var(--colorPrimary)] uppercase">
-              Join Our Celebration
-            </span>
-            <h2 className="font-serif text-3xl sm:text-4xl md:text-5xl font-bold text-[var(--colorTextDark)] mt-2">
-              RSVP
-            </h2>
-            {config?.rsvp?.deadline && (
-              <p className="font-serif italic text-sm text-[var(--colorTextLight)] mt-2">
-                Kindly respond by {config.rsvp.deadline}
-              </p>
-            )}
-          </div>
-
-          <LuxuryFrame glow={true} className="p-6 sm:p-10">
+      {fieldsToRender && fieldsToRender.length > 0 && (
+        <section
+          id="rsvp-section"
+          className="relative py-20 px-4 sm:px-6 z-10"
+          style={getSectionBackgroundStyle('rsvp')}
+        >
+          <div className="max-w-2xl mx-auto">
             
-            {rsvpSubmitted ? (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="text-center py-12"
-              >
-                <div className="w-16 h-16 rounded-full mx-auto mb-4 bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center justify-center">
-                  <CheckCircle2 size={32} />
-                </div>
-                <h3 className="font-serif text-2xl font-bold text-[var(--colorTextDark)] mb-2">
-                  Thank You!
-                </h3>
-                <p className="font-serif text-sm sm:text-base text-[var(--colorTextDark)]/70 max-w-md mx-auto mb-6">
-                  Your response has been received with joy. We cannot wait to celebrate our union with you!
+            <div className="text-center mb-10">
+              <span className="font-sans text-[10px] sm:text-xs font-bold tracking-[0.25em] text-[var(--colorPrimary)] uppercase">
+                Join Our Celebration
+              </span>
+              <h2 className="font-serif text-3xl sm:text-4xl md:text-5xl font-bold text-[var(--colorTextDark)] mt-2">
+                RSVP
+              </h2>
+              {config?.rsvp?.deadline && (
+                <p className="font-serif italic text-sm text-[var(--colorTextLight)] mt-2">
+                  Kindly respond by {config.rsvp.deadline}
                 </p>
-                <button
-                  onClick={() => setRsvpSubmitted(false)}
-                  className="text-xs font-semibold uppercase tracking-wider text-[var(--colorPrimary)] underline hover:opacity-80"
+              )}
+            </div>
+
+            <LuxuryFrame glow={true} className="p-6 sm:p-10">
+              
+              {rsvpSubmitted ? (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="text-center py-12"
                 >
-                  Submit another response
-                </button>
-              </motion.div>
-            ) : (
-              <form onSubmit={handleWhatsAppRSVP} className="space-y-6">
-                
-                {/* Guest Name */}
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-[var(--colorTextDark)]/80 mb-2">
-                    Your Full Name *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={rsvpForm.name}
-                    onChange={(e) => setRsvpForm({ ...rsvpForm, name: e.target.value })}
-                    placeholder="Enter your name"
-                    className="w-full px-4 py-3 rounded-xl border border-[var(--colorPrimary)]/30 focus:border-[var(--colorPrimary)] bg-white/75 backdrop-blur-sm focus:bg-white/90 outline-none font-serif text-sm text-[var(--colorTextDark)]"
-                  />
-                </div>
+                  <div className="w-16 h-16 rounded-full mx-auto mb-4 bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center justify-center">
+                    <CheckCircle2 size={32} />
+                  </div>
+                  <h3 className="font-serif text-2xl font-bold text-[var(--colorTextDark)] mb-2">
+                    Thank You!
+                  </h3>
+                  <p className="font-serif text-sm sm:text-base text-[var(--colorTextDark)]/70 max-w-md mx-auto mb-6">
+                    Your response has been received with joy. We cannot wait to celebrate our union with you!
+                  </p>
+                  <button
+                    onClick={() => setRsvpSubmitted(false)}
+                    className="text-xs font-semibold uppercase tracking-wider text-[var(--colorPrimary)] underline hover:opacity-80"
+                  >
+                    Submit another response
+                  </button>
+                </motion.div>
+              ) : (
+                <form onSubmit={handleWhatsAppRSVP} className="space-y-6">
+                  
+                  {fieldsToRender.map((field, idx) => {
+                    const isCore = field.id === 'guestName' || field.id === 'name' || field.id === 'attending';
+                    const isVisible = isCore || isAttending || field.type === 'textarea';
+                    if (!isVisible) return null;
 
-                {/* Attendance Buttons */}
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-[var(--colorTextDark)]/80 mb-2">
-                    Will you attend? *
-                  </label>
-                  <div className="grid grid-cols-2 gap-3">
-                    {['Joyfully Accept', 'Regretfully Decline'].map((choice) => {
-                      const selected = rsvpForm.attending === choice;
-                      return (
+                    const currentValue = formData[field.id] ?? (
+                      (field.id === 'guestName' || field.id === 'name') 
+                        ? (formData.guestName || formData.name || guestName || '') 
+                        : ''
+                    );
+
+                    const inputClass = "w-full px-4 py-3 rounded-xl border border-[var(--colorPrimary)]/30 focus:border-[var(--colorPrimary)] bg-white/75 backdrop-blur-sm focus:bg-white/95 outline-none font-serif text-sm text-[var(--colorTextDark)] transition-all shadow-sm";
+
+                    return (
+                      <div key={field.id || idx} className="space-y-2 animate-fadeIn">
+                        <label className="block text-xs font-bold uppercase tracking-wider text-[var(--colorTextDark)]/80">
+                          {field.label || 'Question'} {field.required && <span className="text-[var(--colorPrimary)]">*</span>}
+                        </label>
+
+                        {/* 1. Textarea */}
+                        {field.type === 'textarea' ? (
+                          <textarea
+                            rows={3}
+                            value={currentValue}
+                            onChange={(e) => handleFieldChange(field.id, e.target.value)}
+                            placeholder={field.placeholder || 'Write your message or wishes here...'}
+                            className={`${inputClass} resize-y min-h-[90px]`}
+                          />
+                        ) : field.type === 'button-group' ? (
+                          /* 2. Button Group (e.g. Attending Yes/No) */
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            {(field.options || 'Joyfully Accept,Regretfully Decline').split(',').map((opt, i) => {
+                              const choice = opt.trim();
+                              const isSelected = currentValue === choice;
+                              return (
+                                <button
+                                  key={i}
+                                  type="button"
+                                  onClick={() => handleFieldChange(field.id, choice)}
+                                  className={`py-3 px-4 rounded-xl border text-xs sm:text-sm font-serif font-semibold transition-all duration-300 flex items-center justify-center gap-2 ${
+                                    isSelected
+                                      ? 'border-[var(--colorPrimary)] bg-[var(--colorPrimary)] text-white shadow-md scale-[1.01]'
+                                      : 'border-[var(--colorPrimary)]/25 bg-white/60 text-[var(--colorTextDark)]/70 hover:bg-white hover:border-[var(--colorPrimary)]/50'
+                                  }`}
+                                >
+                                  {isSelected && <CheckCircle2 size={15} className="text-white shrink-0" />}
+                                  <span>{choice}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ) : field.type === 'checkbox-group' ? (
+                          /* 3. Checkbox Group (Multiple Selection) */
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                            {(field.options || '').split(',').map((opt, i) => {
+                              const choice = opt.trim();
+                              const selectedList = (currentValue || '').split(', ').filter(Boolean);
+                              const isChecked = selectedList.includes(choice);
+                              return (
+                                <label
+                                  key={i}
+                                  className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer select-none transition-all ${
+                                    isChecked
+                                      ? 'bg-[var(--colorPrimary)]/15 border-[var(--colorPrimary)] text-[var(--colorTextDark)] font-semibold shadow-sm'
+                                      : 'bg-white/60 border-[var(--colorPrimary)]/25 text-[var(--colorTextDark)]/75 hover:bg-white hover:border-[var(--colorPrimary)]/50'
+                                  }`}
+                                >
+                                  <div className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition-all ${
+                                    isChecked ? 'bg-[var(--colorPrimary)] border-[var(--colorPrimary)] text-white' : 'bg-white/80 border-[var(--colorPrimary)]/40'
+                                  }`}>
+                                    {isChecked && <Check size={12} strokeWidth={3} />}
+                                  </div>
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={(e) => {
+                                      let updated;
+                                      if (e.target.checked) {
+                                        updated = [...selectedList, choice];
+                                      } else {
+                                        updated = selectedList.filter(item => item !== choice);
+                                      }
+                                      handleFieldChange(field.id, updated.join(', '));
+                                    }}
+                                    className="hidden"
+                                  />
+                                  <span className="text-xs sm:text-sm font-serif">{choice}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        ) : field.type === 'guest-count' ? (
+                          /* 4. Guest Count Select (Respects URL pax) */
+                          <div>
+                            {urlPax && (
+                              <p className="text-[10px] font-sans uppercase tracking-widest text-[var(--colorPrimary)] mb-1.5 font-semibold">
+                                Max allowed for your invitation: {urlPax} {urlPax === 1 ? 'guest' : 'guests'}
+                              </p>
+                            )}
+                            <select
+                              value={currentValue || (urlPax ? Math.min(urlPax, 1) : 1)}
+                              onChange={(e) => handleFieldChange(field.id, Number(e.target.value))}
+                              className={`${inputClass} cursor-pointer`}
+                            >
+                              {Array.from(
+                                { length: urlPax ? Math.min(urlPax, config?.rsvp?.maxGuests || 50) : (config?.rsvp?.maxGuests || 5) },
+                                (_, i) => i + 1
+                              ).map((num) => (
+                                <option key={num} value={num}>
+                                  {num} {num === 1 ? 'Guest' : 'Guests'}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        ) : field.type === 'select' ? (
+                          /* 5. Dropdown Select */
+                          <select
+                            value={currentValue}
+                            onChange={(e) => handleFieldChange(field.id, e.target.value)}
+                            className={`${inputClass} cursor-pointer`}
+                          >
+                            <option value="">{field.placeholder || '-- Please Select --'}</option>
+                            {(field.options || '').split(',').map((opt, i) => {
+                              const choice = opt.trim();
+                              return <option key={i} value={choice}>{choice}</option>;
+                            })}
+                          </select>
+                        ) : field.type === 'number' ? (
+                          /* 6. Number Input */
+                          <input
+                            type="number"
+                            min={0}
+                            value={currentValue}
+                            onChange={(e) => handleFieldChange(field.id, e.target.value)}
+                            placeholder={field.placeholder || '0'}
+                            className={inputClass}
+                          />
+                        ) : field.type === 'tel' ? (
+                          /* 7. Phone Input */
+                          <input
+                            type="tel"
+                            value={currentValue}
+                            onChange={(e) => handleFieldChange(field.id, e.target.value)}
+                            placeholder={field.placeholder || '+94 77 123 4567'}
+                            className={inputClass}
+                          />
+                        ) : (
+                          /* 8. Default Short Text */
+                          <input
+                            type="text"
+                            value={currentValue}
+                            onChange={(e) => handleFieldChange(field.id, e.target.value)}
+                            placeholder={field.placeholder || 'Enter answer...'}
+                            className={inputClass}
+                          />
+                        )}
+
+                        {/* Error Feedback */}
+                        {formErrors[field.id] && (
+                          <p className="text-red-500 text-[11px] font-sans font-medium mt-1">
+                            ⚠️ {formErrors[field.id]}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {/* Submission Buttons */}
+                  <div className="pt-4 flex flex-col gap-3">
+                    {config?.rsvp?.submissionDestination === 'google-sheet' ? (
+                      <>
                         <button
-                          key={choice}
                           type="button"
-                          onClick={() => setRsvpForm({ ...rsvpForm, attending: choice })}
-                          className={`py-3 px-4 rounded-xl border text-xs sm:text-sm font-serif font-semibold transition-all ${
-                            selected
-                              ? 'border-[var(--colorPrimary)] bg-[var(--colorPrimary)] text-white shadow-md'
-                              : 'border-[var(--colorPrimary)]/25 bg-white/60 text-[var(--colorTextDark)]/70 hover:bg-white'
-                          }`}
+                          onClick={handleDirectRSVP}
+                          disabled={rsvpLoading}
+                          className="w-full py-4 rounded-full bg-[var(--colorPrimary)] text-white text-xs sm:text-sm font-bold tracking-widest uppercase shadow-[0_8px_25px_rgba(201,149,106,0.35)] hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 flex items-center justify-center gap-2"
                         >
-                          {choice}
+                          <Send size={15} />
+                          <span>{rsvpLoading ? 'Submitting...' : 'Submit RSVP'}</span>
                         </button>
-                      );
-                    })}
+
+                        {config?.rsvp?.whatsappNumber && (
+                          <button
+                            type="button"
+                            onClick={handleWhatsAppRSVP}
+                            className="w-full py-3 rounded-full border border-[var(--colorPrimary)]/40 bg-white/70 hover:bg-white text-[var(--colorTextDark)] text-xs font-semibold tracking-wider uppercase transition-all duration-300 flex items-center justify-center gap-2"
+                          >
+                            <span>Send via WhatsApp</span>
+                          </button>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          type="submit"
+                          className="w-full py-4 rounded-full bg-[var(--colorPrimary)] text-white text-xs sm:text-sm font-bold tracking-widest uppercase shadow-[0_8px_25px_rgba(201,149,106,0.35)] hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 flex items-center justify-center gap-2"
+                        >
+                          <Send size={15} />
+                          <span>Send RSVP via WhatsApp</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleDirectRSVP}
+                          disabled={rsvpLoading}
+                          className="w-full py-3 rounded-full border border-[var(--colorPrimary)]/40 bg-white/70 hover:bg-white text-[var(--colorTextDark)] text-xs font-semibold tracking-wider uppercase transition-all duration-300"
+                        >
+                          {rsvpLoading ? 'Submitting...' : 'Submit Online Without WhatsApp'}
+                        </button>
+                      </>
+                    )}
                   </div>
-                </div>
 
-                {/* Guest Count (only if attending) */}
-                {rsvpForm.attending === 'Joyfully Accept' && (
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-[var(--colorTextDark)]/80 mb-2">
-                      Number of Guests Attending
-                    </label>
-                    <select
-                      value={rsvpForm.guests}
-                      onChange={(e) => setRsvpForm({ ...rsvpForm, guests: Number(e.target.value) })}
-                      className="w-full px-4 py-3 rounded-xl border border-[var(--colorPrimary)]/30 focus:border-[var(--colorPrimary)] bg-white/75 backdrop-blur-sm focus:bg-white/90 outline-none font-serif text-sm text-[var(--colorTextDark)]"
-                    >
-                      {Array.from({ length: config?.rsvp?.maxGuests || 2 }, (_, i) => i + 1).map((num) => (
-                        <option key={num} value={num}>
-                          {num} {num === 1 ? 'Guest' : 'Guests'}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
+                </form>
+              )}
 
-                {/* Dietary Preferences */}
-                {rsvpForm.attending === 'Joyfully Accept' && (
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-[var(--colorTextDark)]/80 mb-2">
-                      Dietary Requirements / Preferences (Optional)
-                    </label>
-                    <input
-                      type="text"
-                      value={rsvpForm.dietary}
-                      onChange={(e) => setRsvpForm({ ...rsvpForm, dietary: e.target.value })}
-                      placeholder="e.g. Vegetarian, Non-veg, Halal, Nut Allergy..."
-                      className="w-full px-4 py-3 rounded-xl border border-[var(--colorPrimary)]/30 focus:border-[var(--colorPrimary)] bg-white/75 backdrop-blur-sm focus:bg-white/90 outline-none font-serif text-sm text-[var(--colorTextDark)]"
-                    />
-                  </div>
-                )}
+            </LuxuryFrame>
 
-                {/* Wishes / Message */}
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-[var(--colorTextDark)]/80 mb-2">
-                    Wishes for the Couple (Optional)
-                  </label>
-                  <textarea
-                    rows={3}
-                    value={rsvpForm.message}
-                    onChange={(e) => setRsvpForm({ ...rsvpForm, message: e.target.value })}
-                    placeholder="Send your warm blessings to the bride & groom..."
-                    className="w-full px-4 py-3 rounded-xl border border-[var(--colorPrimary)]/30 focus:border-[var(--colorPrimary)] bg-white/75 backdrop-blur-sm focus:bg-white/90 outline-none font-serif text-sm text-[var(--colorTextDark)]"
-                  />
-                </div>
-
-                {/* Submit Buttons */}
-                <div className="pt-2 flex flex-col gap-3">
-                  <button
-                    type="submit"
-                    className="w-full py-4 rounded-full bg-[var(--colorPrimary)] text-white text-xs sm:text-sm font-bold tracking-widest uppercase shadow-[0_8px_25px_rgba(201,149,106,0.35)] hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 flex items-center justify-center gap-2"
-                  >
-                    <Send size={15} />
-                    <span>Send RSVP via WhatsApp</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleDirectRSVP}
-                    disabled={rsvpLoading}
-                    className="w-full py-3 rounded-full border border-[var(--colorPrimary)]/40 bg-white/70 hover:bg-white text-[var(--colorTextDark)] text-xs font-semibold tracking-wider uppercase transition-all duration-300"
-                  >
-                    {rsvpLoading ? 'Submitting...' : 'Submit Online Without WhatsApp'}
-                  </button>
-                </div>
-
-              </form>
-            )}
-
-          </LuxuryFrame>
-
-        </div>
-      </section>
+          </div>
+        </section>
+      )}
 
       {/* ========================================================
           8. MODERN ELEGANT FOOTER

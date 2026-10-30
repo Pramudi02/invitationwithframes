@@ -137,15 +137,15 @@ export async function GET(request) {
 
 /**
  * POST /api/config
- * Creates a new invitation entry with a unique slug.
+ * Creates a new invitation entry with a unique slug, optionally duplicating an existing one.
  */
 export async function POST(request) {
 
   try {
-    const { slug } = await request.json();
+    const { slug, duplicateFrom } = await request.json();
 
     if (!slug || !/^[a-z0-9-]+$/.test(slug)) {
-      return NextResponse.json({ success: false, error: 'Invalid or missing slug format.' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'Invalid or missing slug format. Only lowercase letters, numbers, and hyphens are allowed.' }, { status: 400 });
     }
 
     const client = await getMongoClientPromise();
@@ -157,11 +157,59 @@ export async function POST(request) {
       return NextResponse.json({ success: false, error: `Invitation with slug '${slug}' already exists.` }, { status: 409 });
     }
 
-    // Initialize with default structure
-    const newConfig = getDefaultConfig(slug);
+    let newConfig;
+    if (duplicateFrom) {
+      const sourceQuery = (duplicateFrom === 'global_config') ? { _id: 'global_config' } : { slug: duplicateFrom };
+      const sourceDoc = await db.collection('settings').findOne(sourceQuery);
+      if (!sourceDoc) {
+        return NextResponse.json({ success: false, error: `Source invitation '${duplicateFrom}' not found.` }, { status: 404 });
+      }
+
+      const { _id, ...restSource } = sourceDoc;
+      newConfig = {
+        ...JSON.parse(JSON.stringify(restSource)),
+        slug,
+        isFavourite: false,
+        clientPasscode: null, // Reset client passcode for the new duplicate so it can be generated cleanly
+        createdAt: new Date().toISOString()
+      };
+
+      // Also clone event_meta, birthdays, general, label_overrides if they exist
+      const [sourceMeta, sourceBd, sourceGen, sourceLo] = await Promise.all([
+        db.collection('event_meta').findOne({ slug: duplicateFrom }),
+        db.collection('birthdays').findOne({ slug: duplicateFrom }),
+        db.collection('general').findOne({ slug: duplicateFrom }),
+        db.collection('label_overrides').findOne({ slug: duplicateFrom }),
+      ]);
+
+      if (sourceMeta) {
+        const { _id: _mid, ...metaRest } = sourceMeta;
+        await db.collection('event_meta').insertOne({ ...metaRest, slug });
+      }
+      if (sourceBd) {
+        const { _id: _bid, ...bdRest } = sourceBd;
+        await db.collection('birthdays').insertOne({ ...bdRest, slug });
+      }
+      if (sourceGen) {
+        const { _id: _gid, ...genRest } = sourceGen;
+        await db.collection('general').insertOne({ ...genRest, slug });
+      }
+      if (sourceLo) {
+        const { _id: _lid, ...loRest } = sourceLo;
+        await db.collection('label_overrides').insertOne({ ...loRest, slug });
+      }
+    } else {
+      // Initialize with default structure
+      newConfig = getDefaultConfig(slug);
+    }
+
     await db.collection('settings').insertOne(newConfig);
 
-    return NextResponse.json({ success: true, message: `Created invitation for '${slug}'`, config: newConfig });
+    return NextResponse.json({ 
+      success: true, 
+      message: duplicateFrom ? `Successfully duplicated invitation to '${slug}'` : `Created invitation for '${slug}'`, 
+      config: newConfig 
+    });
   } catch (error) {
     console.error('[api/config] POST Error:', error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

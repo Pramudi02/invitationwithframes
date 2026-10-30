@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import ImageCropper from './components/ImageCropper';
 import VideoToFramesConverter from './components/VideoToFramesConverter';
 import imageCompression from 'browser-image-compression';
-import { Trash2, ImageIcon, Upload, X, Heart, Calendar, Book, MapPin, Image as LucideImage, Mail, Palette, Search, Layers, Sparkles, CheckCircle, AlertCircle, Save, ExternalLink, Music, Crop, RefreshCcw, Eye, Download } from 'lucide-react';
+import { Trash2, ImageIcon, Upload, X, Heart, Calendar, Book, MapPin, Image as LucideImage, Mail, Palette, Search, Layers, Sparkles, CheckCircle, AlertCircle, Save, ExternalLink, Music, Crop, RefreshCcw, Eye, Download, Copy } from 'lucide-react';
 import { PRESET_THEMES } from '../../lib/themes';
 import { EVENT_LABELS } from '../../lib/eventLabels';
 
@@ -642,6 +642,51 @@ function InvitationList({ onEdit, showToast }) {
     }
   };
 
+  const [duplicatingSourceSlug, setDuplicatingSourceSlug] = useState(null);
+  const [duplicateSlug, setDuplicateSlug] = useState('');
+  const [duplicateLoading, setDuplicateLoading] = useState(false);
+
+  const handleOpenDuplicateModal = (sourceSlug) => {
+    setDuplicatingSourceSlug(sourceSlug);
+    setDuplicateSlug(`${sourceSlug}-copy`);
+  };
+
+  const handleDuplicate = async (e) => {
+    if (e) e.preventDefault();
+    const cleanSlug = duplicateSlug.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-');
+    if (!cleanSlug) {
+      showToast('error', 'Please enter a valid URL slug.');
+      return;
+    }
+    if (!duplicatingSourceSlug) return;
+
+    setDuplicateLoading(true);
+    try {
+      const res = await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          slug: cleanSlug, 
+          duplicateFrom: duplicatingSourceSlug 
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setDuplicatingSourceSlug(null);
+        setDuplicateSlug('');
+        await fetchInvitations();
+        showToast('success', `Created duplicate: /${cleanSlug}`);
+      } else {
+        showToast('error', data.error || 'Failed to create duplicate.');
+      }
+    } catch (err) {
+      console.error('[InvitationList] Duplicate Error:', err);
+      showToast('error', 'Failed to create duplicate due to server error.');
+    } finally {
+      setDuplicateLoading(false);
+    }
+  };
+
   const getDateStatus = (dateTimeISO) => {
     if (!dateTimeISO) return null;
     try {
@@ -790,6 +835,20 @@ function InvitationList({ onEdit, showToast }) {
                       <Trash2 size={14} />
                     </button>
                   </div>
+                  {/* Create Duplicate */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      handleOpenDuplicateModal(inv.slug);
+                    }}
+                    className="mt-2 w-full py-2 rounded-lg text-[0.65rem] font-bold uppercase tracking-widest transition-colors flex items-center justify-center gap-1.5 bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200/60"
+                    title="Duplicate this invitation with all its data, styling, and settings"
+                  >
+                    <Copy size={12} />
+                    <span>Create Duplicate</span>
+                  </button>
                   {/* Share Client Portal */}
                   <SharePortalButton slug={inv.slug} passcode={inv.clientPasscode} />
                   {/* Download Backup */}
@@ -846,6 +905,84 @@ function InvitationList({ onEdit, showToast }) {
                     {loading ? 'Deleting...' : 'Yes, Delete Permanently'}
                   </button>
                 </div>
+              </motion.div>
+            </div>
+          )}
+
+          {duplicatingSourceSlug && (
+            <div className="fixed inset-0 z-[9999] flex items-center justify-center p-6">
+              {/* Premium Backdrop Overlay */}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => !duplicateLoading && setDuplicatingSourceSlug(null)}
+                className="absolute inset-0 bg-black/50 backdrop-blur-md"
+              />
+
+              {/* Premium Modal Box */}
+              <motion.div
+                initial={{ scale: 0.85, opacity: 0, y: 15 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.85, opacity: 0, y: 15 }}
+                transition={{ duration: 0.3, ease: "easeOut" }}
+                className="relative bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 shadow-2xl rounded-2xl p-6 sm:p-8 max-w-md w-full"
+              >
+                <div className="w-14 h-14 bg-amber-50 dark:bg-amber-950/30 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <Copy size={28} />
+                </div>
+                <h2 className="text-2xl font-serif text-slate-800 dark:text-neutral-100 text-center mb-1">Duplicate Invitation</h2>
+                <p className="text-slate-500 dark:text-neutral-400 text-xs text-center mb-6 leading-relaxed">
+                  Creates an exact replica of <span className="font-bold text-slate-700 dark:text-neutral-200">/{duplicatingSourceSlug}</span> with all themes, photos, timeline, layout settings, and celebration details preserved.
+                </p>
+
+                <form onSubmit={handleDuplicate} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-neutral-300 mb-2 text-left">
+                      New Invitation URL Slug *
+                    </label>
+                    <div className="flex items-center rounded-xl border border-slate-200 dark:border-neutral-700 bg-slate-50 dark:bg-neutral-800/60 overflow-hidden focus-within:border-[#C9956A] focus-within:ring-1 focus-within:ring-[#C9956A] transition-all">
+                      <span className="px-3.5 py-3 text-xs font-mono text-slate-400 select-none border-r border-slate-200 dark:border-neutral-700">
+                        /
+                      </span>
+                      <input
+                        type="text"
+                        required
+                        autoFocus
+                        value={duplicateSlug}
+                        onChange={(e) => setDuplicateSlug(e.target.value.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, ''))}
+                        placeholder="e.g. rashini-sanjula-copy"
+                        className="w-full px-3.5 py-3 bg-transparent text-sm font-mono text-slate-800 dark:text-neutral-100 outline-none"
+                      />
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1.5 text-left">
+                      Only lowercase letters, numbers, and hyphens. This will be the URL of your new invitation.
+                    </p>
+                  </div>
+
+                  <div className="flex gap-3 pt-3">
+                    <button
+                      type="button"
+                      onClick={() => setDuplicatingSourceSlug(null)}
+                      disabled={duplicateLoading}
+                      className="flex-1 py-3 px-4 bg-slate-100 dark:bg-neutral-800 hover:bg-slate-200 text-slate-600 dark:text-neutral-400 rounded-xl text-xs font-bold uppercase tracking-wider transition-colors disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={duplicateLoading || !duplicateSlug.trim()}
+                      className="flex-1 py-3 px-4 bg-[#C9956A] hover:bg-[#b5845a] text-white rounded-xl text-xs font-bold uppercase tracking-wider shadow-lg shadow-[#C9956A]/20 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      {duplicateLoading ? (
+                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      ) : (
+                        <Copy size={14} />
+                      )}
+                      <span>{duplicateLoading ? 'Duplicating...' : 'Create Duplicate'}</span>
+                    </button>
+                  </div>
+                </form>
               </motion.div>
             </div>
           )}

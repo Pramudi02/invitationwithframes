@@ -831,98 +831,18 @@ export default function FramedWeddingInvitation({ config, hasOpened }) {
           </div>
 
           {/* ========================================================
-              INTERACTIVE VENUE MAP BOX
+              INTERACTIVE VENUE MAP
               ======================================================== */}
           {mapLocationQuery && (
-            <div id="location-map" className="mt-10 sm:mt-12">
-              <LuxuryFrame glow={true} className="p-5 sm:p-8">
-                
-                {/* Header */}
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 pb-5 border-b border-[var(--colorPrimary)]/20">
-                  <div>
-                    <div className="flex items-center gap-1.5 text-[10px] sm:text-xs font-bold tracking-[0.2em] uppercase text-[var(--colorPrimary)] mb-1">
-                      <MapPin size={15} />
-                      <span>Venue Location & Map</span>
-                    </div>
-                    <h3 className="font-serif text-2xl sm:text-3xl font-bold text-[var(--colorTextDark)]">
-                      {activeMapEvent?.title || activeMapEvent?.defaultType || 'Venue Location'}
-                    </h3>
-                    {(activeMapEvent?.venueName || activeMapEvent?.address) && (
-                      <p className="font-serif text-xs sm:text-sm text-[var(--colorTextLight)] mt-1">
-                        {activeMapEvent?.venueName && (
-                          <span className="font-semibold text-[var(--colorTextDark)]">{activeMapEvent.venueName}</span>
-                        )}
-                        {activeMapEvent?.venueName && activeMapEvent?.address ? ' • ' : ''}
-                        {activeMapEvent?.address}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Switcher Tabs if multiple events exist */}
-                  {allEvents.length > 1 && (
-                    <div className="flex flex-wrap items-center gap-2">
-                      {allEvents.map((evt, idx) => {
-                        const isSelected = selectedMapEventIndex === idx;
-                        return (
-                          <button
-                            key={idx}
-                            type="button"
-                            onClick={() => setSelectedMapEventIndex(idx)}
-                            className={`px-3.5 py-1.5 rounded-full text-xs font-serif font-semibold transition-all duration-300 ${
-                              isSelected
-                                ? 'bg-[var(--colorPrimary)] text-white shadow-md scale-105'
-                                : 'bg-white/60 text-[var(--colorTextDark)]/70 hover:bg-white border border-[var(--colorPrimary)]/25'
-                            }`}
-                          >
-                            {evt.title || evt.defaultType || `Venue ${idx + 1}`}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                {/* Google Map Embedded Frame */}
-                <div className="relative overflow-hidden rounded-xl border border-[var(--colorPrimary)]/30 shadow-inner bg-slate-100 h-[280px] sm:h-[380px] w-full">
-                  <iframe
-                    title="Event Location Google Map"
-                    src={mapEmbedUrl}
-                    className="w-full h-full border-0"
-                    loading="lazy"
-                    allowFullScreen
-                    referrerPolicy="no-referrer-when-downgrade"
-                  />
-                </div>
-
-                {/* Map Action Links */}
-                <div className="mt-5 pt-4 border-t border-[var(--colorPrimary)]/15 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                  <span className="text-xs font-serif italic text-[var(--colorTextLight)]">
-                    Easily navigate to {activeMapEvent?.venueName || 'the venue'} via Google Maps
-                  </span>
-                  <div className="flex items-center gap-2.5 w-full sm:w-auto">
-                    <a
-                      href={mapDirectionsUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex-1 sm:flex-initial px-5 py-2.5 rounded-full bg-[var(--colorPrimary)] text-white text-xs font-bold tracking-wider uppercase flex items-center justify-center gap-2 shadow-[0_4px_15px_rgba(201,149,106,0.25)] hover:scale-105 active:scale-95 transition-all"
-                    >
-                      <Navigation size={14} />
-                      <span>Get Directions</span>
-                    </a>
-
-                    <a
-                      href={googleMapsSearchUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-4 py-2.5 rounded-full bg-white/70 hover:bg-white border border-[var(--colorPrimary)]/30 text-[var(--colorTextDark)] text-xs font-semibold tracking-wider uppercase flex items-center justify-center gap-1.5 transition-all"
-                    >
-                      <ExternalLink size={13} />
-                      <span>Open in Maps</span>
-                    </a>
-                  </div>
-                </div>
-
-              </LuxuryFrame>
+            <div id="location-map" className="mt-10 sm:mt-12 overflow-hidden rounded-2xl shadow-lg h-[320px] sm:h-[420px] w-full">
+              <iframe
+                title="Event Location Google Map"
+                src={mapEmbedUrl}
+                className="w-full h-full border-0"
+                loading="lazy"
+                allowFullScreen
+                referrerPolicy="no-referrer-when-downgrade"
+              />
             </div>
           )}
 
@@ -1350,6 +1270,7 @@ export default function FramedWeddingInvitation({ config, hasOpened }) {
                           <span>Send RSVP via WhatsApp</span>
                         </button>
 
+                        {/* Commented out for now
                         <button
                           type="button"
                           onClick={handleDirectRSVP}
@@ -1358,6 +1279,7 @@ export default function FramedWeddingInvitation({ config, hasOpened }) {
                         >
                           {rsvpLoading ? 'Submitting...' : 'Submit Online Without WhatsApp'}
                         </button>
+                        */}
                       </>
                     )}
                   </div>

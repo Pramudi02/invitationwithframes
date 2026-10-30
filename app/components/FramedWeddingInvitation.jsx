@@ -1,13 +1,13 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Calendar, Clock, MapPin, Heart, Music, Volume2, VolumeX,
   ChevronDown, Send, CheckCircle2, Navigation, Sparkles,
   ChevronLeft, ChevronRight, X, ArrowUp, UserCheck, Utensils,
-  ExternalLink, Check
+  ExternalLink, Check, Download
 } from 'lucide-react';
 import CinematicScrollHero from './CinematicScrollHero';
 
@@ -79,19 +79,109 @@ function LuxuryFrame({ children, className = '', glow = false }) {
   );
 }
 
+// Helper: Robustly resolves the target local date & time for countdown and calendar export
+function getResolvedWeddingDateTime(wedding = {}, ceremony = {}) {
+  let year, month, day;
+
+  // 1. Try dateTimeISO (e.g. "2026-11-14T18:00:00" or "2026-11-14T18:00:00.000Z")
+  if (wedding.dateTimeISO) {
+    const match = String(wedding.dateTimeISO).match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (match) {
+      year = parseInt(match[1], 10);
+      month = parseInt(match[2], 10) - 1;
+      day = parseInt(match[3], 10);
+    }
+  }
+
+  // 2. If displayDate exists and dateTimeISO was missing or in the past, verify displayDate
+  if (wedding.displayDate) {
+    const d = new Date(wedding.displayDate);
+    if (!isNaN(d.getTime())) {
+      const now = new Date();
+      now.setHours(0, 0, 0, 0);
+      const parsedDate = year ? new Date(year, month, day) : null;
+      if (!parsedDate || (parsedDate.getTime() < now.getTime() && d.getTime() >= now.getTime())) {
+        year = d.getFullYear();
+        month = d.getMonth();
+        day = d.getDate();
+      }
+    }
+  }
+
+  // Fallback defaults if unspecified
+  if (!year) {
+    year = 2026;
+    month = 11;
+    day = 19;
+  }
+
+  // 3. Resolve Hours & Minutes from heroTime, ceremony.time, or dateTimeISO
+  let hours = 10;
+  let minutes = 0;
+  let timeStr = wedding.heroTime || ceremony.time || '';
+
+  if (timeStr && typeof timeStr === 'string') {
+    const tMatch = timeStr.trim().match(/(\d{1,2}):(\d{2})(?:\s*([AP]M))?/i);
+    if (tMatch) {
+      hours = parseInt(tMatch[1], 10);
+      minutes = parseInt(tMatch[2], 10);
+      const meridiem = tMatch[3]?.toUpperCase();
+      if (meridiem === 'PM' && hours < 12) hours += 12;
+      if (meridiem === 'AM' && hours === 12) hours = 0;
+    }
+  } else if (wedding.dateTimeISO) {
+    const tIso = String(wedding.dateTimeISO).match(/T(\d{2}):(\d{2})/);
+    if (tIso) {
+      hours = parseInt(tIso[1], 10);
+      minutes = parseInt(tIso[2], 10);
+      timeStr = `${hours % 12 || 12}:${String(minutes).padStart(2, '0')} ${hours >= 12 ? 'PM' : 'AM'}`;
+    }
+  }
+
+  const targetDate = new Date(year, month, day, hours, minutes, 0, 0);
+
+  return {
+    year,
+    month,
+    day,
+    hours,
+    minutes,
+    timeStr: timeStr || '10:00 AM',
+    targetDate
+  };
+}
+
 // ==========================================
 // 3. COUNTDOWN TIMER
 // ==========================================
-function FramedCountdown({ targetDateISO }) {
-  const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0, isPast: false });
+function FramedCountdown({ targetDate, targetDateISO, extraText = '' }) {
+  const resolvedTarget = useMemo(() => {
+    if (targetDate instanceof Date && !isNaN(targetDate.getTime())) return targetDate;
+    if (targetDateISO) {
+      const d = new Date(targetDateISO);
+      if (!isNaN(d.getTime())) return d;
+    }
+    return null;
+  }, [targetDate, targetDateISO]);
+
+  const [timeLeft, setTimeLeft] = useState(() => {
+    if (!resolvedTarget) return { days: 0, hours: 0, minutes: 0, seconds: 0, isPast: false };
+    const diff = resolvedTarget.getTime() - Date.now();
+    if (diff <= 0) return { days: 0, hours: 0, minutes: 0, seconds: 0, isPast: true };
+    return {
+      days: Math.floor(diff / (1000 * 60 * 60 * 24)),
+      hours: Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
+      minutes: Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60)),
+      seconds: Math.floor((diff % (1000 * 60)) / 1000),
+      isPast: false
+    };
+  });
 
   useEffect(() => {
-    if (!targetDateISO) return;
+    if (!resolvedTarget) return;
 
     const calculate = () => {
-      const target = new Date(targetDateISO).getTime();
-      const now = new Date().getTime();
-      const diff = target - now;
+      const diff = resolvedTarget.getTime() - Date.now();
 
       if (diff <= 0) {
         setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0, isPast: true });
@@ -110,7 +200,7 @@ function FramedCountdown({ targetDateISO }) {
     calculate();
     const interval = setInterval(calculate, 1000);
     return () => clearInterval(interval);
-  }, [targetDateISO]);
+  }, [resolvedTarget]);
 
   const units = [
     { label: 'DAYS', val: timeLeft.days },
@@ -142,11 +232,15 @@ function FramedCountdown({ targetDateISO }) {
           </div>
         ))}
       </div>
-      {timeLeft.isPast && (
+      {timeLeft.isPast ? (
         <p className="text-center font-serif italic text-sm text-[var(--colorPrimary)] mt-3">
           The celebration has begun!
         </p>
-      )}
+      ) : extraText ? (
+        <p className="text-center font-serif italic text-sm text-[var(--colorTextDark)]/80 mt-3">
+          {extraText}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -180,6 +274,27 @@ export default function FramedWeddingInvitation({ config, hasOpened }) {
 
   // Selected Map Event Index for Location Map Box
   const [selectedMapEventIndex, setSelectedMapEventIndex] = useState(0);
+
+  // Calendar Dropdown Menu State
+  const [calendarMenuOpen, setCalendarMenuOpen] = useState(false);
+  const calendarMenuRef = useRef(null);
+
+  // Close calendar dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (calendarMenuRef.current && !calendarMenuRef.current.contains(e.target)) {
+        setCalendarMenuOpen(false);
+      }
+    };
+    if (calendarMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('touchstart', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [calendarMenuOpen]);
 
   // Dynamic RSVP Form Builder Fields (Resolves from Admin's RSVP Form Builder Layout 1)
   const currentLayout = config?.heroLayout || 1;
@@ -295,20 +410,74 @@ export default function FramedWeddingInvitation({ config, hasOpened }) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activePhotoIndex, config.gallery]);
 
-  // Handle Calendar Export / Add to Google Calendar
-  const handleAddToCalendar = () => {
+  // Target Wedding Date & Time Resolution
+  const weddingDateTime = useMemo(() => {
+    return getResolvedWeddingDateTime(config?.wedding, config?.events?.ceremony);
+  }, [config?.wedding, config?.events?.ceremony]);
+
+  const countdownExtraText = config?.layoutSettings?.[`layout_${config?.heroLayout || 1}`]?.countdownExtraText
+    || config?.layoutSettings?.layout_1?.countdownExtraText
+    || '';
+
+  // Handle Calendar Export - Google Calendar
+  const handleAddToGoogleCalendar = () => {
     const title = `${config?.couple?.displayNames || 'Wedding'} Ceremony`;
-    const venue = config?.events?.ceremony?.venueName || 'Wedding Venue';
+    const venue = config?.events?.ceremony?.venueName || config?.wedding?.venue || 'Wedding Venue';
     const address = config?.events?.ceremony?.address || '';
-    const dateStr = config?.wedding?.dateTimeISO || new Date().toISOString();
-    
-    const startDate = new Date(dateStr);
+    const location = [venue, address].filter(Boolean).join(', ');
+    const details = `We look forward to celebrating with you!\n\nDate: ${config?.wedding?.displayDate || ''}\nTime: ${weddingDateTime.timeStr}\nVenue: ${location}`;
+
+    const startDate = weddingDateTime.targetDate;
     const endDate = new Date(startDate.getTime() + 4 * 60 * 60 * 1000); // 4 hours duration
 
-    const formatGCalDate = (d) => d.toISOString().replace(/-|:|\.\d\d\d/g, '');
-    const gCalUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&dates=${formatGCalDate(startDate)}/${formatGCalDate(endDate)}&details=${encodeURIComponent('We look forward to celebrating with you!')}&location=${encodeURIComponent(`${venue}, ${address}`)}`;
-    
+    const formatGCalDate = (d) => d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+    const gCalUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&dates=${formatGCalDate(startDate)}/${formatGCalDate(endDate)}&details=${encodeURIComponent(details)}&location=${encodeURIComponent(location)}`;
+
     window.open(gCalUrl, '_blank');
+  };
+
+  // Handle Calendar Export - Apple / Device Calendar (.ics file)
+  const handleDownloadICS = () => {
+    const title = `${config?.couple?.displayNames || 'Wedding'} Ceremony`;
+    const venue = config?.events?.ceremony?.venueName || config?.wedding?.venue || 'Wedding Venue';
+    const address = config?.events?.ceremony?.address || '';
+    const location = [venue, address].filter(Boolean).join(', ');
+    const description = `We look forward to celebrating with you!\\n\\nDate: ${config?.wedding?.displayDate || ''}\\nTime: ${weddingDateTime.timeStr}\\nVenue: ${location}`;
+
+    const startDate = weddingDateTime.targetDate;
+    const endDate = new Date(startDate.getTime() + 4 * 60 * 60 * 1000); // 4 hours duration
+
+    const formatICSDate = (d) => d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+    const now = new Date();
+
+    const icsContent = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//Wedding Invitation//EN',
+      'CALSCALE:GREGORIAN',
+      'METHOD:PUBLISH',
+      'BEGIN:VEVENT',
+      `UID:${Date.now()}@weddinginvitation`,
+      `DTSTAMP:${formatICSDate(now)}`,
+      `DTSTART:${formatICSDate(startDate)}`,
+      `DTEND:${formatICSDate(endDate)}`,
+      `SUMMARY:${title.replace(/[,;]/g, ' ')}`,
+      `DESCRIPTION:${description.replace(/\n/g, '\\n')}`,
+      `LOCATION:${location.replace(/[,;]/g, ' ')}`,
+      'STATUS:CONFIRMED',
+      'END:VEVENT',
+      'END:VCALENDAR'
+    ].join('\r\n');
+
+    const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `${(config?.slug || 'wedding')}-invitation.ics`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
   };
 
   // Handle WhatsApp RSVP with Dynamic Fields
@@ -622,7 +791,7 @@ export default function FramedWeddingInvitation({ config, hasOpened }) {
           </motion.div>
 
           {/* Live Countdown Timer */}
-          <FramedCountdown targetDateISO={wedding.dateTimeISO} />
+          <FramedCountdown targetDate={weddingDateTime.targetDate} extraText={countdownExtraText} />
 
           {/* Action CTA Buttons */}
           <motion.div
@@ -637,13 +806,65 @@ export default function FramedWeddingInvitation({ config, hasOpened }) {
             >
               RSVP With Us
             </a>
-            <button
-              onClick={handleAddToCalendar}
-              className="px-6 py-3.5 rounded-full border border-[var(--colorPrimary)]/40 bg-white/70 hover:bg-white text-[var(--colorTextDark)] font-sans text-xs sm:text-sm font-semibold tracking-wider transition-all duration-300 flex items-center gap-2"
-            >
-              <Calendar size={15} className="text-[var(--colorPrimary)]" />
-              <span>Add to Calendar</span>
-            </button>
+
+            {/* Add to Calendar with Popover Selection (Google / Apple .ics) */}
+            <div className="relative" ref={calendarMenuRef}>
+              <button
+                type="button"
+                onClick={() => setCalendarMenuOpen(prev => !prev)}
+                className="px-6 py-3.5 rounded-full border border-[var(--colorPrimary)]/40 bg-white/70 hover:bg-white text-[var(--colorTextDark)] font-sans text-xs sm:text-sm font-semibold tracking-wider transition-all duration-300 flex items-center gap-2 shadow-sm hover:border-[var(--colorPrimary)]"
+              >
+                <Calendar size={15} className="text-[var(--colorPrimary)]" />
+                <span>Add to Calendar</span>
+                <ChevronDown size={14} className={`text-[var(--colorTextLight)] transition-transform duration-200 ${calendarMenuOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              <AnimatePresence>
+                {calendarMenuOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 8, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 8, scale: 0.95 }}
+                    transition={{ duration: 0.15 }}
+                    className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 sm:bottom-auto sm:top-full sm:mt-2 w-56 bg-white/95 backdrop-blur-xl border border-[var(--colorPrimary)]/30 rounded-2xl shadow-xl overflow-hidden z-50 p-1.5"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleAddToGoogleCalendar();
+                        setCalendarMenuOpen(false);
+                      }}
+                      className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl hover:bg-[var(--colorPrimary)]/10 text-left text-xs font-semibold text-[var(--colorTextDark)] transition-colors group"
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-[var(--colorPrimary)]/15 flex items-center justify-center text-[var(--colorPrimary)] group-hover:scale-105 transition-transform">
+                        <Calendar size={16} />
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-semibold text-xs text-[var(--colorTextDark)]">Google Calendar</p>
+                        <p className="text-[10px] text-[var(--colorTextLight)] font-normal">Opens in new tab</p>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleDownloadICS();
+                        setCalendarMenuOpen(false);
+                      }}
+                      className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl hover:bg-[var(--colorPrimary)]/10 text-left text-xs font-semibold text-[var(--colorTextDark)] transition-colors group"
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-[var(--colorPrimary)]/15 flex items-center justify-center text-[var(--colorPrimary)] group-hover:scale-105 transition-transform">
+                        <Download size={16} />
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-semibold text-xs text-[var(--colorTextDark)]">Apple / Device Calendar</p>
+                        <p className="text-[10px] text-[var(--colorTextLight)] font-normal">.ics for iPhone, Mac, Outlook</p>
+                      </div>
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
           </motion.div>
 
         </div>
